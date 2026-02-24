@@ -135,7 +135,7 @@ func (database *Database) GetEventSettings() (*EventSettings, error) {
 		SelectionRound2Order:        "L",
 		SelectionRound3Order:        "",
 		SelectionShowUnpickedTeams:  true,
-		TbaDownloadEnabled:          true,
+		TbaDownloadEnabled:          false,
 		ApChannel:                   36,
 		SCCUpCommands:               strings.Join(sccDefaultUpCommands, "\n"),
 		SCCDownCommands:             strings.Join(sccDefaultDownCommands, "\n"),
