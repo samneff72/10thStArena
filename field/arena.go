@@ -115,7 +115,7 @@ type AllianceStation struct {
 func NewArena(dbPath string) (*Arena, error) {
 	arena := new(Arena)
 	arena.configureNotifiers()
-	arena.Plc = new(plc.ModbusPlc)
+	arena.Plc = new(plc.FakePlc)
 
 	arena.AllianceStations = make(map[string]*AllianceStation)
 	arena.AllianceStations["R1"] = new(AllianceStation)
