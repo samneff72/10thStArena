@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
-# Cross-compile cheesy-arena for Raspberry Pi 4 (arm64 Linux).
+# Cross-compile cheesy-arena for Raspberry Pi 4.
 # Run from the repo root on any machine with Go 1.22+ installed.
+#
+# Targets the 32-bit Raspberry Pi OS (armv7l / armhf), which is the default
+# OS image for most Pi 4 installations.  If your Pi runs the 64-bit image
+# (uname -m returns aarch64) change GOARCH to arm64 and remove GOARM.
 #
 # Output: cheesy-arena-pi  (single static binary, copy to the Pi and run)
 
@@ -8,8 +12,8 @@ set -euo pipefail
 
 OUTPUT="cheesy-arena-pi"
 
-echo "Building for linux/arm64..."
-GOOS=linux GOARCH=arm64 go build -o "$OUTPUT" .
+echo "Building for linux/arm (armv7 / 32-bit Raspberry Pi OS)..."
+GOOS=linux GOARCH=arm GOARM=7 go build -o "$OUTPUT" .
 
 echo "Done: $OUTPUT"
 echo ""
