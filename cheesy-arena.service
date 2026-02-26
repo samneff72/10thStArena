@@ -12,6 +12,7 @@ WorkingDirectory=/home/pi/cheesy-arena
 # The leading '-' tells systemd to ignore the error if the address is
 # already configured (e.g. after a service restart).
 ExecStartPre=-/sbin/ip addr add 10.0.100.5/24 dev eth0
+ExecStartPre=/bin/chmod +x /home/pi/cheesy-arena/cheesy-arena-pi
 
 ExecStart=/home/pi/cheesy-arena/cheesy-arena-pi
 Restart=on-failure
