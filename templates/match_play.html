@@ -7,38 +7,38 @@ UI for controlling match play and viewing team connection and field status.
 {{define "title"}}Match Play{{end}}
 {{define "body"}}
 <div class="row">
-  <div class="col-lg-4" id="matchListColumn"></div>
-  <div class="col-lg-8">
+  <div class="col-lg-4 d-none d-lg-block" id="matchListColumn"></div>
+  <div class="col-12 col-lg-8">
     <div class="row text-center mb-2">
-      <div id="matchName" class="col-lg-3 card card-body bg-body-tertiary"
+      <div id="matchName" class="col-sm-3 card card-body bg-body-tertiary"
         style="text-transform: uppercase;">&nbsp;
       </div>
-      <div id="matchState" class="col-lg-3 card card-body bg-body-tertiary">&nbsp;</div>
-      <div id="matchTime" class="col-lg-2 card card-body bg-body-tertiary">&nbsp;</div>
-      <div id="redScore" class="col-lg-2 card card-body bg-red">&nbsp;</div>
-      <div id="blueScore" class="col-lg-2 card card-body bg-blue">&nbsp;</div>
+      <div id="matchState" class="col-sm-3 card card-body bg-body-tertiary">&nbsp;</div>
+      <div id="matchTime" class="col-sm-2 card card-body bg-body-tertiary">&nbsp;</div>
+      <div id="redScore" class="col-sm-2 card card-body bg-red">&nbsp;</div>
+      <div id="blueScore" class="col-sm-2 card card-body bg-blue">&nbsp;</div>
     </div>
     <div class="row text-center">
-      <div class="col-lg-6 card card-body bg-blue mb-2">
+      <div class="col-6 card card-body bg-blue mb-2">
         <div class="row mb-3">
-          <div class="col-lg-4">Blue Teams</div>
-          <div class="col-lg-2" data-bs-toggle="tooltip" title="Driver Station Status">DS</div>
-          <div class="col-lg-2" data-bs-toggle="tooltip" title="Radio Status">Rad</div>
-          <div class="col-lg-2" data-bs-toggle="tooltip" title="Robot Status">Rbt</div>
-          <div class="col-lg-2" data-bs-toggle="tooltip" title="Bypass/Disable">Byp</div>
+          <div class="col-4">Blue Teams</div>
+          <div class="col-2" data-bs-toggle="tooltip" title="Driver Station Status">DS</div>
+          <div class="col-2" data-bs-toggle="tooltip" title="Radio Status">Rad</div>
+          <div class="col-2" data-bs-toggle="tooltip" title="Robot Status">Rbt</div>
+          <div class="col-2" data-bs-toggle="tooltip" title="Bypass/Disable">Byp</div>
         </div>
         {{template "matchPlayTeam" dict "color" "B" "position" 1}}
         {{template "matchPlayTeam" dict "color" "B" "position" 2}}
         {{template "matchPlayTeam" dict "color" "B" "position" 3}}
         <div id="playoffBlueAllianceInfo"></div>
       </div>
-      <div class="col-lg-6 card card-body bg-red mb-2">
+      <div class="col-6 card card-body bg-red mb-2">
         <div class="row mb-3">
-          <div class="col-lg-4">Red Teams</div>
-          <div class="col-lg-2" data-bs-toggle="tooltip" title="Driver Station Status">DS</div>
-          <div class="col-lg-2" data-bs-toggle="tooltip" title="Radio Status">Rad</div>
-          <div class="col-lg-2" data-bs-toggle="tooltip" title="Robot Status">Rbt</div>
-          <div class="col-lg-2" data-bs-toggle="tooltip" title="Bypass/Disable">Byp</div>
+          <div class="col-4">Red Teams</div>
+          <div class="col-2" data-bs-toggle="tooltip" title="Driver Station Status">DS</div>
+          <div class="col-2" data-bs-toggle="tooltip" title="Radio Status">Rad</div>
+          <div class="col-2" data-bs-toggle="tooltip" title="Robot Status">Rbt</div>
+          <div class="col-2" data-bs-toggle="tooltip" title="Bypass/Disable">Byp</div>
         </div>
         {{template "matchPlayTeam" dict "color" "R" "position" 3}}
         {{template "matchPlayTeam" dict "color" "R" "position" 2}}
@@ -92,7 +92,7 @@ UI for controlling match play and viewing team connection and field status.
     </div>
     <div class="card card-body bg-body-tertiary mt-3">
       <div class="row">
-        <div class="col-lg-3">
+        <div class="col-sm-6 col-lg-3">
           <h6>Scoring</h6>
           <p><span class="badge badge-scoring" id="refereeScoreStatus">Referee</span><br/>
             <span class="badge badge-scoring" id="redNearScoreStatus"></span><br/>
@@ -122,11 +122,11 @@ UI for controlling match play and viewing team connection and field status.
           </p>
           {{end}}
         </div>
-        <div class="col-lg-3">
+        <div class="col-sm-6 col-lg-3">
           <h6>Audience Display</h6>
           {{template "audience_display_radio_buttons"}}
         </div>
-        <div class="col-lg-3">
+        <div class="col-sm-6 col-lg-3">
           <h6>Alliance Station Display</h6>
           <div>
             <div>
@@ -171,7 +171,7 @@ UI for controlling match play and viewing team connection and field status.
           &nbsp;
           <b class="btn btn-primary btn-sm" onclick="showResult(0);">Clear</b>
         </div>
-        <div class="col-lg-3">
+        <div class="col-sm-6 col-lg-3">
           <h6>Match Sounds</h6>
           <div class="checkbox">
             <label>
@@ -193,8 +193,8 @@ UI for controlling match play and viewing team connection and field status.
       </div>
     </div>
     <div class="row justify-content-center mt-3">
-      <div id="cycleTimeMessage" class="col-lg-6"></div>
-      <div id="earlyLateMessage" class="col-lg-4 text-end"></div>
+      <div id="cycleTimeMessage" class="col-sm-6"></div>
+      <div id="earlyLateMessage" class="col-sm-4 text-end"></div>
     </div>
   </div>
 </div>
@@ -249,21 +249,21 @@ UI for controlling match play and viewing team connection and field status.
 {{end}}
 {{define "matchPlayTeam"}}
 <div class="row mb-2" id="status{{.color}}{{.position}}">
-  <div class="col-lg-1">{{.position}}</div>
-  <div class="col-lg-3">
+  <div class="col-1">{{.position}}</div>
+  <div class="col-3">
     <input type="number" class="team-number form-control"
       onchange="$('#substituteTeams').prop('disabled', false);">
   </div>
-  <div class="col-lg-2 col-no-padding">
+  <div class="col-2 col-no-padding">
     <div class="ds-status" data-bs-toggle="tooltip" title="Bandwidth Consumed"></div>
   </div>
-  <div class="col-lg-2 col-no-padding">
+  <div class="col-2 col-no-padding">
     <div class="radio-status" data-bs-toggle="tooltip" title="AP SSID"></div>
   </div>
-  <div class="col-lg-2 col-no-padding">
+  <div class="col-2 col-no-padding">
     <div class="robot-status" data-bs-toggle="tooltip" title="Battery / Time Since Link Lost"></div>
   </div>
-  <div class="col-lg-2 col-no-padding">
+  <div class="col-2 col-no-padding">
     <div class="bypass-status" onclick="toggleBypass('{{.color}}{{.position}}');"></div>
   </div>
 </div>

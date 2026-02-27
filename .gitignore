@@ -1,31 +1,14 @@
-# Compiled Object files, Static and Dynamic libs (Shared Objects)
-*.o
-*.a
-*.so
+# Compiled binaries
 cheesy-arena
+cheesy-arena-pi
+cheesy-arena.exe
 
-# Folders
-_obj
-_test
-.idea
+# Claude Code editor config
+.claude/
 
-# Architecture specific extensions/prefixes
-*.[568vq]
-[568vq].out
+# Game manuals / large reference PDFs (checked in separately if needed)
+Rules/
 
-*.cgo1.go
-*.cgo2.c
-_cgo_defun.c
-_cgo_gotypes.go
-_cgo_export.*
-
-_testmain.go
-
-*.exe
-*.test
-*.db
-*.db-journal
-*.out
-.DS_Store
-static/logs
-static/img/avatars
+# Runtime-generated directories
+db/
+static/logs/

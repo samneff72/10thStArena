@@ -1,0 +1,22 @@
+[Unit]
+Description=Cheesy Arena practice server
+# Wait for the network interface to be up before starting.
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/cheesy-arena
+
+# Assign the FMS address to eth0 before starting.
+# The leading '-' tells systemd to ignore the error if the address is
+# already configured (e.g. after a service restart).
+ExecStartPre=-/sbin/ip addr add 10.0.100.5/24 dev eth0
+ExecStartPre=/bin/chmod +x /home/pi/cheesy-arena/cheesy-arena-pi
+
+ExecStart=/home/pi/cheesy-arena/cheesy-arena-pi
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
