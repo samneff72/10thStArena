@@ -1,142 +1,295 @@
-Cheesy Arena [![Build Status](https://github.com/Team254/cheesy-arena/actions/workflows/test.yml/badge.svg)](https://github.com/Team254/cheesy-arena/actions)
-============
-A field management system that just works.
+# Practice Field Controller
 
-For the game-agnostic version, see [Cheesy Arena Lite](https://github.com/Team254/cheesy-arena-lite).
+A Raspberry Pi service for running FRC practice sessions. Controls up to 6 robots across red and blue alliances. Runs timed auto and teleop periods. Manages the field access point and VLAN isolation automatically. Accessible from any browser on the field network.
 
-## Key features
+## Requirements
 
-**For participants and spectators**
+- Raspberry Pi 4 (armv7 / 32-bit Raspberry Pi OS recommended)
+- [Go 1.23+](https://golang.org/dl/) on your build machine
+- Vivid-Hosting VH-113 field access point (running OpenWRT)
+- Cisco Catalyst 3500-series managed switch
+- Static IP assigned to Pi (recommend `10.0.100.5`)
 
-* Same network isolation and security as the official FIRST FMS
-* No-lag realtime scoring
-* Team stack lights and seven-segment display are replaced by an LCD screen, which shows team info before the match and
-  realtime scoring and timer during the match
-* Smooth-scrolling rankings display
-* Direct publishing of schedule, results, and rankings to The Blue Alliance
+## Install
 
-**For scorekeepers and event staff**
+**Build the Pi binary**
 
-* Runs on Windows, macOS, and Linux
-* No install prerequisites
-* No "pre-start" &ndash; hardware is configured automatically and in the background
-* Flexible and quick match schedule generation
-* Streamlined realtime score entry
-* Reports, results, and logs can be viewed from any computer
-* An arbitrary number of auxiliary displays can be set up using any computer with just a web browser, to show rankings,
-  queueing, field status, etc.
+Run this on your development machine (not on the Pi):
 
-## License
+```bash
+./build-pi.sh
+```
 
-Teams may use Cheesy Arena freely for practice, scrimmages, and off-season events. See [LICENSE](LICENSE) for more
-details.
+This cross-compiles an ARM binary named `cheesy-arena-pi`.
 
-## Installing
+**Copy files to the Pi**
 
-**From a pre-built release**
+```bash
+scp cheesy-arena-pi pi@<PI_IP>:~/cheesy-arena/
+scp -r static templates font schedules audio pi@<PI_IP>:~/cheesy-arena/
+scp cheesy-arena.service pi@<PI_IP>:~/
+```
 
-Download the [latest release](https://github.com/Team254/cheesy-arena/releases). Pre-built packages are available for
-Linux, macOS (x64 and M1), and Windows.
+**Install the systemd service (run on the Pi)**
 
-On recent versions of macOS, you may be prevented from running an app from an unidentified developer;
-see [these instructions](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unidentified-developer-mh40616/mac)
-on how to bypass the warning.
+```bash
+sudo mv ~/cheesy-arena.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable cheesy-arena
+sudo systemctl start cheesy-arena
+```
 
-**From source**
+The service automatically assigns `10.0.100.5/24` to `eth0` on startup.
 
-1. Download [Go](https://golang.org/dl/) (version 1.22 or later required)
-1. Clone this GitHub repository to a location of your choice
-1. Navigate to the repository's directory in the terminal
-1. Compile the code with `go build`
-1. Run the `cheesy-arena` or `cheesy-arena.exe` binary
-1. Navigate to http://localhost:8080 in your browser (Google Chrome recommended)
+**Open the web UI**
 
-**IP address configuration**
+```
+http://10.0.100.5:8080
+```
 
-When running Cheesy Arena on a playing field with robots, set the IP address of the computer running Cheesy Arena to
-10.0.100.5. By a convention baked into the FRC Driver Station software, driver stations will broadcast their presence on
-the network to this hardcoded address so that the FMS does not need to discover them by some other method.
+## Network Setup
 
-When running Cheesy Arena without robots for testing or development, any IP address can be used.
+This section is the most important part of the physical field setup. Read it carefully before powering anything on.
 
-## Under the hood
+### Why this network layout matters
 
-Cheesy Arena is written using [Go](https://golang.org), a language developed by Google and first released in 2009. Go
-excels in the areas of concurrency, networking, performance, and portability, which makes it ideal for a field
-management system.
+FRC Driver Station software is hardcoded to contact its FMS at `10.0.100.5` on ports `1750` (TCP) and `1121`/`1160` (UDP). The Pi must live at that address on the wired field network. Each robot lives on its own team-number-derived subnet isolated by a VLAN. The access point handles wireless; the switch enforces isolation.
 
-Cheesy Arena is implemented as a web server, with all human interaction done via browser. The graphical interfaces are
-implemented in HTML, JavaScript, and CSS. There are many advantages to this approach &ndash; development of new
-graphical elements is rapid, and no software needs to be installed other than on the server. Client web pages send
-commands and receive updates using WebSockets.
+### Topology
 
-[Bolt](https://github.com/etcd-io/bbolt) is used as the datastore, and making backups or transferring data from one
-installation to another is as simple as copying the database file.
+```
+                        ┌─────────────────────────────────────┐
+                        │   Cisco 3500 Managed Switch          │
+                        │                                       │
+          ┌─────────────┤ Trunk port        6 x access ports   │
+          │             │                   (one per station)   │
+          │             └──────────────────────┬────────────────┘
+          │                                    │ (wired robot connections)
+    ┌─────┴──────┐                      ┌──────┴──────┐
+    │ Raspberry  │                      │  Robots      │
+    │ Pi 4       │                      │  (RoboRIO)   │
+    │ 10.0.100.5 │                      │  10.TE.AM.xx │
+    └─────┬──────┘                      └─────────────┘
+          │
+          │ (HTTP to AP, Telnet to switch)
+          │
+    ┌─────┴────────────┐
+    │ Vivid-Hosting    │
+    │ VH-113 AP        │
+    │ (OpenWRT)        │
+    └─────┬────────────┘
+          │ (WiFi — one SSID per team)
+          │
+    ┌─────┴──────────────┐
+    │  DS Laptops        │
+    │  (one per station) │
+    │  10.TE.AM.5        │
+    └────────────────────┘
+```
 
-Schedule generation is fast because pre-generated schedules are included with the code. Each schedule contains a certain
-number of matches per team for placeholder teams 1 through N, so generating the actual match schedule becomes a simple
-exercise in permuting the mapping of real teams to placeholder teams. The pre-generated schedules are checked into this
-repository and can be vetted in advance of any events for deviations from the randomness (and other) requirements.
+### Step 1 — Assign a static IP to the Pi
 
-Cheesy Arena includes support for, but doesn't require, networking hardware similar to that used in official FRC events.
-Teams are issued their own SSIDs and WPA keys, and when connected to Cheesy Arena are isolated to a VLAN which prevents
-any communication other than between the driver station, robot, and event server. The network hardware is reconfigured
-via SSH and Telnet commands for the new set of teams when each mach is loaded.
+The Pi must have `10.0.100.5` on the interface connected to the switch. The systemd service handles this automatically via:
 
-## PLC integration
+```
+ExecStartPre=/sbin/ip addr add 10.0.100.5/24 dev eth0
+```
 
-Cheesy Arena has the ability to integrate with an Allen-Bradley PLC setup similar to the one that FIRST uses, to read
-field sensors and control lights and motors. The PLC hardware travels with the FIRST California fields; contact your FTA
-for more information.
+If you need a permanent static IP (survives reboots without the service), edit `/etc/dhcpcd.conf` on the Pi:
 
-The PLC code can be found [here](https://github.com/ejordan376/Cheesy-PLC).
+```
+interface eth0
+static ip_address=10.0.100.5/24
+```
 
-## Team Sign integration
+Do not put the Pi on a robot subnet (`10.TE.AM.x`). Use a dedicated management subnet such as `10.0.100.0/24`.
 
-Cheesy Arena has the ability to integrate with
-the [Cypress Team Signs](https://cypressintegration.com/customsolutions/teamdisplay/) used at official FRC events. See
-the [Configuring Cheesy Arena wiki page](https://github.com/Team254/cheesy-arena/wiki/Configuring-Cheesy-Arena-Settings#team-signs)
-for details configurating the team signs in Cheesy Arena.
+### Step 2 — Configure the Cisco 3500 switch
 
-## LED hardware
+The switch must support VLANs. Cheesy Arena configures it automatically over Telnet (port 23). You must:
 
-Due to the prohibitive cost of the LEDs and LED controllers used on official fields, for years in which LEDs are
-mandatory for a proper game experience (such as 2018), Cheesy Arena integrates
-with [Advatek](https://www.advateklights.com) controllers and LEDs.
+1. Enable Telnet access with a password.
+2. Create VLANs 10, 20, 30, 40, 50, 60 (one per alliance station).
+3. Set the Pi's port as a trunk carrying all VLANs.
+4. Set each robot's port as an access port in the correct VLAN.
 
-## Advanced networking
+The switch address and password are set in the Cheesy Arena web UI under Settings > Network.
 
-See the [Advanced Networking wiki page](https://github.com/Team254/cheesy-arena/wiki/Advanced-Networking-Concepts) for
-instructions on what equipment to obtain and how to configure it in order to support advanced network security.
+VLAN assignments (fixed, managed automatically):
+
+| Station | VLAN |
+|---------|------|
+| Red 1   | 10   |
+| Red 2   | 20   |
+| Red 3   | 30   |
+| Blue 1  | 40   |
+| Blue 2  | 50   |
+| Blue 3  | 60   |
+
+When a match loads, the controller pushes DHCP pool and IP configurations for each team's subnet over Telnet.
+
+### Step 3 — Configure the field access point
+
+The AP must run the Vivid-Hosting OpenWRT firmware with the REST API enabled. Cheesy Arena communicates over HTTP. Set the AP address and password in Settings > Network.
+
+When a match loads, the controller pushes one SSID + WPA2 key per team (six total). Driver Station laptops connect to their team's SSID and land on the correct VLAN.
+
+### Step 4 — Verify Pi reachability
+
+The Pi must be able to reach:
+
+| Destination          | Protocol | Port |
+|----------------------|----------|------|
+| Field AP             | HTTP     | 80   |
+| Cisco switch         | Telnet   | 23   |
+| Each robot subnet    | UDP      | 1160 |
+
+Test from the Pi:
+
+```bash
+ping 10.0.100.5        # self
+curl http://<AP_IP>/status
+telnet <SWITCH_IP> 23
+```
+
+### Team subnet addressing
+
+Each team's subnet is derived from the team number. Team 4834 uses `10.48.34.x`:
+
+```
+10. [first two digits] . [last two digits] . x
+     48                   34
+```
+
+| Device         | Address          |
+|----------------|------------------|
+| Switch gateway | 10.TE.AM.4       |
+| Robot (RoboRIO)| 10.TE.AM.2       |
+| DS laptop      | 10.TE.AM.5 (DHCP)|
+
+The DHCP pool reserves `.1`–`.19` and `.200`–`.254`. Addresses `.20`–`.199` are available for laptops and other devices.
+
+## Usage
+
+### Starting and stopping the service
+
+```bash
+sudo systemctl start cheesy-arena
+sudo systemctl stop cheesy-arena
+sudo systemctl restart cheesy-arena
+sudo systemctl status cheesy-arena
+```
+
+### Viewing logs
+
+```bash
+journalctl -u cheesy-arena -f
+```
+
+### Running a practice match
+
+1. Open `http://10.0.100.5:8080` in a browser on any device on the field network.
+2. Go to **Setup > Teams** and enter the team numbers for each station.
+3. Go to **Match Play**.
+4. Wait for all Driver Stations to show green (DS Linked, Radio Linked, Robot Linked).
+5. Click **Start Match**.
+
+Match timing defaults:
+
+| Period  | Duration |
+|---------|----------|
+| Auto    | 15 s     |
+| Pause   | 3 s      |
+| Teleop  | 135 s    |
+
+### Ports used by the service
+
+| Port | Protocol | Purpose                          |
+|------|----------|----------------------------------|
+| 8080 | TCP/HTTP | Web UI and WebSocket updates     |
+| 1750 | TCP      | Driver Station connection        |
+| 1121 | UDP      | Enable/disable packets to DS     |
+| 1160 | UDP      | Status packets from DS           |
+
+## Configuration
+
+Match timing and hardware drivers are configured in Settings inside the web UI. No config file is required for basic operation.
+
+To change match timing, go to **Setup > Settings** and adjust the duration fields. Defaults:
+
+| Setting                 | Default |
+|-------------------------|---------|
+| Auto duration           | 15 s    |
+| Pause duration          | 3 s     |
+| Teleop duration         | 135 s   |
+| HTTP port               | 8080    |
+
+Network credentials (AP address, AP password, switch address, switch password) are also set in the Settings page and stored in the local database.
+
+## Extending
+
+Two hardware interfaces are reserved for future physical field hardware.
+
+**Field lights**
+
+Implement the `FieldLights` interface to drive field LEDs (e.g., via GPIO):
+
+```go
+type FieldLights interface {
+    SetColor(r, g, b uint8)
+    Off()
+}
+```
+
+Set `field_lights_driver: "gpio"` in your build configuration to activate.
+
+**E-stop panel**
+
+Implement the `EStopPanel` interface to read physical emergency stop buttons:
+
+```go
+type EStopPanel interface {
+    EStopPressed() bool
+}
+```
+
+Set `estop_panel_driver: "gpio"` in your build configuration to activate.
+
+Both drivers default to no-op stubs. The field runs normally without them.
+
+## Development
+
+**Run tests**
+
+```bash
+go test ./...
+```
+
+**Run locally (no robots)**
+
+```bash
+go build
+./cheesy-arena
+```
+
+Open `http://localhost:8080`. No network hardware is required for testing.
+
+**Build for Pi**
+
+```bash
+./build-pi.sh
+```
+
+Output: `cheesy-arena-pi` (ARM, statically linked, ready to copy to the Pi).
 
 ## Contributing
 
-Cheesy Arena is far from finished! You can help by:
+- Open a [GitHub issue](https://github.com/Team254/cheesy-arena/issues) for bugs or feature requests.
+- Send a pull request with a clear summary and `go test ./...` results.
+- Include screenshots for any UI changes.
 
-* Writing a missing feature, and sending a pull request
-* Filing any bugs or feature requests using the [issue tracker](https://github.com/Team254/cheesy-arena/issues)
-* Contributing documentation to the [wiki](https://github.com/Team254/cheesy-arena/wiki)
-* Sending baked goods to [Pat](https://github.com/patfair)
+Commit messages use short imperative sentences, e.g. `Fix driver station TCP reads`.
 
-## Acknowledgements
+## License
 
-[Several folks](https://github.com/Team254/cheesy-arena/graphs/contributors) have contributed pull requests. Thanks!
-
-In addition, the following individuals have contributed to make Cheesy Arena a reality:
-
-* Tom Bottiglieri
-* James Cerar
-* Kiet Chau
-* Travis Covington
-* Nick Eyre
-* Patrick Fairbank
-* Eugene Fang
-* Thad House
-* Ed Jordan
-* Karthik Kanagasabapathy
-* Ken Mitchell
-* Andrew Nabors
-* Jared Russell
-* Ken Schenke
-* Austin Schuh
-* Colin Wilson
+Teams may use this software freely for practice, scrimmages, and off-season events. See [LICENSE](LICENSE) for details.
