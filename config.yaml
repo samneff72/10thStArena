@@ -1,0 +1,27 @@
+# 10th Street FRC Practice Field — Configuration
+# Edit this file and restart the service to apply changes.
+# Unknown keys produce a startup error (typo protection).
+
+# Match period durations (seconds).
+# FRC 2025 defaults: 15s auto, 3s pause, 135s teleop.
+auto_duration_seconds: 15
+pause_duration_seconds: 3
+teleop_duration_seconds: 135
+
+# HTTP port for the web interface.
+http_port: 8080
+
+# Set to true to configure the Wi-Fi AP and Ethernet switch for each match.
+# Requires AP address, AP password, and switch address set via the web UI.
+# Leave false for bench testing without network hardware.
+network_security_enabled: false
+
+# Field lights driver.
+# "none"   — no lights output (default for bench testing).
+# "serial" — Arduino on USB serial; sends field_lights_command at match start.
+field_lights_driver: none
+
+# Serial port settings (used when field_lights_driver is "serial").
+# field_lights_port: /dev/ttyACM0
+# field_lights_baud: 9600
+# field_lights_command: "START\n"
