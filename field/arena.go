@@ -48,6 +48,7 @@ const (
 	PostMatch
 	TimeoutActive
 	PostTimeout
+	FreePractice // Sibling branch to match-play path; no timers.
 )
 
 type Arena struct {
@@ -75,6 +76,9 @@ type Arena struct {
 	MuteMatchSounds      bool
 	matchAborted         bool
 	soundsPlayed         map[*game.MatchSound]struct{}
+
+	freePracticeReconfiguring atomic.Bool  // true while AP is being reconfigured for a slot change
+	freePracticeReconfigMu    sync.Mutex   // serialises concurrent SetFreePracticeSlot calls
 }
 
 type AllianceStation struct {
@@ -382,9 +386,10 @@ func (arena *Arena) ResetMatch() error {
 
 // Returns the fractional number of seconds since the start of the match.
 func (arena *Arena) MatchTimeSec() float64 {
-	if arena.MatchState == PreMatch || arena.MatchState == StartMatch || arena.MatchState == PostMatch {
+	switch arena.MatchState {
+	case PreMatch, StartMatch, PostMatch, FreePractice:
 		return 0
-	} else {
+	default:
 		return time.Since(arena.MatchStartTime).Seconds()
 	}
 }
@@ -471,6 +476,10 @@ func (arena *Arena) Update() {
 		if matchTimeSec >= float64(game.MatchTiming.TimeoutDurationSec+postTimeoutSec) {
 			arena.MatchState = PreMatch
 		}
+	case FreePractice:
+		// No timer logic. Grant field-enable to all stations unless a slot change is in progress.
+		auto = false
+		enabled = !arena.freePracticeReconfiguring.Load()
 	}
 
 	// Send a match tick notification if passing an integer second threshold or if the match state changed.
@@ -906,6 +915,157 @@ func trussLightWarningSequence(matchTimeSec float64) (bool, [3]bool) {
 		lights[sequence[step]-1] = true
 	}
 	return step < len(sequence), lights
+}
+
+// EnterFreePractice transitions the arena from PreMatch into FreePractice mode.
+// Returns an error if called from any other state.
+func (arena *Arena) EnterFreePractice() error {
+	if arena.MatchState != PreMatch {
+		return fmt.Errorf("cannot enter free practice while a match is in progress or results are pending")
+	}
+	arena.MatchState = FreePractice
+	arena.ArenaStatusNotifier.Notify()
+	return nil
+}
+
+// ExitFreePractice clears all slots, resets AP, and returns to PreMatch.
+// Robots are disabled before any slot is cleared, ensuring they are never
+// briefly enabled-but-disconnected during the transition.
+func (arena *Arena) ExitFreePractice() error {
+	if arena.MatchState != FreePractice {
+		return fmt.Errorf("not in free practice mode")
+	}
+
+	arena.freePracticeReconfigMu.Lock()
+	defer arena.freePracticeReconfigMu.Unlock()
+
+	// Disable all robots immediately; the next arena tick will send disabled packets.
+	arena.freePracticeReconfiguring.Store(true)
+
+	// Clear every slot.
+	for _, station := range []string{"R1", "R2", "R3", "B1", "B2", "B3"} {
+		as := arena.AllianceStations[station]
+		if as.DsConn != nil {
+			as.DsConn.close()
+			as.DsConn = nil
+		}
+		as.Team = nil
+		as.EStop.Store(false)
+		as.AStop.Store(false)
+	}
+
+	// Reset the AP to an empty configuration.
+	var emptyTeams [6]*model.Team
+	if err := arena.accessPoint.ConfigureTeamWifi(emptyTeams); err != nil {
+		log.Printf("ExitFreePractice: failed to reset AP: %v", err)
+		// Continue regardless — we are exiting free practice.
+	}
+
+	arena.freePracticeReconfiguring.Store(false)
+	arena.MatchState = PreMatch
+	arena.ArenaStatusNotifier.Notify()
+	return nil
+}
+
+// SetFreePracticeSlot registers a team in the given station.
+// teamId must be ≥ 1 and must not already be assigned to another slot.
+// Triggers a brief AP reconfiguration during which all robots are disabled.
+// If AP reconfiguration fails the slot assignment is rolled back.
+func (arena *Arena) SetFreePracticeSlot(station string, teamId int, wpaKey string) error {
+	if arena.MatchState != FreePractice {
+		return fmt.Errorf("not in free practice mode")
+	}
+	if _, ok := arena.AllianceStations[station]; !ok {
+		return fmt.Errorf("invalid alliance station %q", station)
+	}
+	if teamId <= 0 {
+		return fmt.Errorf("team number must be 1 or greater")
+	}
+
+	// Reject duplicate team numbers across slots.
+	for id, as := range arena.AllianceStations {
+		if id != station && as.Team != nil && as.Team.Id == teamId {
+			return fmt.Errorf("team %d is already registered in station %s", teamId, id)
+		}
+	}
+
+	arena.freePracticeReconfigMu.Lock()
+	defer arena.freePracticeReconfigMu.Unlock()
+
+	arena.freePracticeReconfiguring.Store(true)
+
+	as := arena.AllianceStations[station]
+	oldTeam := as.Team
+
+	// Close any existing DS connection for the slot.
+	if as.DsConn != nil {
+		as.DsConn.close()
+		as.DsConn = nil
+	}
+	as.Team = &model.Team{Id: teamId, WpaKey: wpaKey}
+
+	// Build the current 6-team list for AP configuration.
+	teams := arena.freePracticeTeams()
+	if err := arena.accessPoint.ConfigureTeamWifi(teams); err != nil {
+		// Rollback in-memory state.
+		as.Team = oldTeam
+		arena.freePracticeReconfiguring.Store(false)
+		return fmt.Errorf("AP reconfiguration failed (rolled back): %w", err)
+	}
+
+	arena.freePracticeReconfiguring.Store(false)
+	arena.ArenaStatusNotifier.Notify()
+	return nil
+}
+
+// ClearFreePracticeSlot removes the team from the given station.
+// If the slot is already empty no AP reconfiguration is triggered.
+// Triggers a brief AP reconfiguration pause otherwise.
+func (arena *Arena) ClearFreePracticeSlot(station string) error {
+	if arena.MatchState != FreePractice {
+		return fmt.Errorf("not in free practice mode")
+	}
+	if _, ok := arena.AllianceStations[station]; !ok {
+		return fmt.Errorf("invalid alliance station %q", station)
+	}
+
+	as := arena.AllianceStations[station]
+	if as.Team == nil {
+		return nil // already empty — no reconfiguration needed
+	}
+
+	arena.freePracticeReconfigMu.Lock()
+	defer arena.freePracticeReconfigMu.Unlock()
+
+	arena.freePracticeReconfiguring.Store(true)
+
+	oldTeam := as.Team
+	if as.DsConn != nil {
+		as.DsConn.close()
+		as.DsConn = nil
+	}
+	as.Team = nil
+
+	teams := arena.freePracticeTeams()
+	if err := arena.accessPoint.ConfigureTeamWifi(teams); err != nil {
+		// Rollback in-memory state.
+		as.Team = oldTeam
+		arena.freePracticeReconfiguring.Store(false)
+		return fmt.Errorf("AP reconfiguration failed (rolled back): %w", err)
+	}
+
+	arena.freePracticeReconfiguring.Store(false)
+	arena.ArenaStatusNotifier.Notify()
+	return nil
+}
+
+// freePracticeTeams builds the [6]*model.Team array (R1…B3) from current AllianceStations.
+func (arena *Arena) freePracticeTeams() [6]*model.Team {
+	var teams [6]*model.Team
+	for i, s := range []string{"R1", "R2", "R3", "B1", "B2", "B3"} {
+		teams[i] = arena.AllianceStations[s].Team
+	}
+	return teams
 }
 
 // assignAutoWinner randomly picks which alliance's HUB goes inactive first in Shift1.

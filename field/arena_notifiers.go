@@ -38,14 +38,15 @@ func (arena *Arena) generateArenaStatusMessage() any {
 		MatchId          int
 		AllianceStations map[string]*AllianceStation
 		MatchState
-		CanStartMatch         bool
-		AccessPointStatus     string
-		SwitchStatus          string
-		RedSCCStatus          string
-		BlueSCCStatus         string
-		PlcIsHealthy          bool
-		FieldEStop            bool
-		PlcArmorBlockStatuses map[string]bool
+		CanStartMatch              bool
+		AccessPointStatus          string
+		SwitchStatus               string
+		RedSCCStatus               string
+		BlueSCCStatus              string
+		PlcIsHealthy               bool
+		FieldEStop                 bool
+		PlcArmorBlockStatuses      map[string]bool
+		FreePracticeReconfiguring  bool
 	}{
 		arena.CurrentMatch.Id,
 		arena.AllianceStations,
@@ -58,6 +59,7 @@ func (arena *Arena) generateArenaStatusMessage() any {
 		arena.Plc.IsHealthy(),
 		arena.Plc.GetFieldEStop(),
 		arena.Plc.GetArmorBlockStatuses(),
+		arena.freePracticeReconfiguring.Load(),
 	}
 }
 

@@ -38,6 +38,9 @@ func (web *Web) settingsPostHandler(w http.ResponseWriter, r *http.Request) {
 	case field.StartMatch, field.WarmupPeriod, field.AutoPeriod, field.PausePeriod, field.TeleopPeriod:
 		web.renderSettings(w, r, "Cannot change settings while a match is in progress.")
 		return
+	case field.FreePractice:
+		web.renderSettings(w, r, "Cannot change settings while in free practice mode.")
+		return
 	}
 
 	eventSettings := web.arena.EventSettings

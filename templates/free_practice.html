@@ -1,0 +1,71 @@
+{{/*
+Free practice operator UI.
+Allows operators to register teams into fixed slots (R1-R3, B1-B3) and
+drive indefinitely without timers. Per-station E-stops remain functional.
+*/}}
+{{define "title"}}Free Practice{{end}}
+{{define "body"}}
+<div id="reconfiguringOverlay" class="alert alert-warning text-center fw-bold d-none" role="alert">
+  Reconfiguring network&hellip; Robots disabled.
+</div>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="mb-0">FREE PRACTICE</h2>
+  <div>
+    <button id="enterBtn" class="btn btn-success me-2" onclick="enterFreePractice()">
+      Enter Free Practice
+    </button>
+    <button id="exitBtn" class="btn btn-warning d-none" onclick="exitFreePractice()">
+      Exit Free Practice
+    </button>
+    <a href="/match_play" class="btn btn-secondary ms-2">Match Play</a>
+  </div>
+</div>
+
+<div class="row g-3">
+  <!-- Red Alliance -->
+  <div class="col-12 col-md-6">
+    <div class="card card-body bg-red">
+      <h5 class="card-title text-center mb-3">Red Alliance</h5>
+      {{template "fpSlot" "R1"}}
+      {{template "fpSlot" "R2"}}
+      {{template "fpSlot" "R3"}}
+    </div>
+  </div>
+  <!-- Blue Alliance -->
+  <div class="col-12 col-md-6">
+    <div class="card card-body bg-blue">
+      <h5 class="card-title text-center mb-3">Blue Alliance</h5>
+      {{template "fpSlot" "B1"}}
+      {{template "fpSlot" "B2"}}
+      {{template "fpSlot" "B3"}}
+    </div>
+  </div>
+</div>
+{{end}}
+
+{{define "fpSlot"}}
+<div class="card mb-2 bg-body-secondary" id="slot-{{.}}">
+  <div class="card-body p-2">
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <span class="fw-bold" style="min-width:2.5rem">{{.}}</span>
+      <input type="number" min="1" class="form-control form-control-sm" style="width:6rem"
+             id="teamId-{{.}}" placeholder="Team #">
+      <input type="text" class="form-control form-control-sm" style="width:7rem"
+             id="wpaKey-{{.}}" placeholder="WPA key">
+      <button class="btn btn-sm btn-primary" onclick="setSlot('{{.}}')">Register</button>
+      <button class="btn btn-sm btn-outline-secondary" onclick="clearSlot('{{.}}')">Clear</button>
+      <button class="btn btn-sm btn-danger ms-auto" onclick="toggleEStop('{{.}}')">E-Stop</button>
+    </div>
+    <div class="mt-1 small text-muted" id="status-{{.}}">No team registered</div>
+  </div>
+</div>
+{{end}}
+
+{{define "script"}}
+<script>
+  // Expose the Go MatchState constant so free_practice.js can compare without hardcoding.
+  const FreePracticeState = {{.FreePracticeState}};
+</script>
+<script src="/static/js/free_practice.js"></script>
+{{end}}
