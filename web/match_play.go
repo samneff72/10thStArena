@@ -207,6 +207,21 @@ func (web *Web) matchPlayWebsocketHandler(w http.ResponseWriter, r *http.Request
 			if err = ws.WriteNotifier(web.arena.ArenaStatusNotifier); err != nil {
 				log.Println(err)
 			}
+		case "toggleEStop":
+			station, ok := data.(string)
+			if !ok {
+				ws.WriteError(fmt.Sprintf("Failed to parse '%s' message.", messageType))
+				continue
+			}
+			if _, ok := web.arena.AllianceStations[station]; !ok {
+				ws.WriteError(fmt.Sprintf("Invalid alliance station '%s'.", station))
+				continue
+			}
+			as := web.arena.AllianceStations[station]
+			as.EStop.Store(!as.EStop.Load())
+			if err = ws.WriteNotifier(web.arena.ArenaStatusNotifier); err != nil {
+				log.Println(err)
+			}
 		case "startMatch":
 			args := struct {
 				MuteMatchSounds bool

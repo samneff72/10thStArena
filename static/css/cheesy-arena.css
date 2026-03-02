@@ -180,7 +180,187 @@ input[data-changed="true"], select[data-changed="true"] {
     opacity: 0.4;
 }
 
-/* Pi small-screen overrides: keep key match-play controls usable at ~720px */
+/* ── Match Play Phase 6 rewrite ─────────────────────────────────────────── */
+
+/* Timer band */
+.mp-timer-band {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 16px;
+  background: #222;
+  border-radius: 6px;
+  transition: background 0.3s;
+}
+#periodText {
+  font-size: clamp(14px, 3vw, 24px);
+  font-weight: bold;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+#timerText {
+  font-size: clamp(52px, 14vw, 88px);
+  font-weight: bold;
+  font-family: monospace;
+  min-width: 3.5ch;
+  text-align: right;
+  line-height: 1;
+}
+.mp-timer-band[data-period="auto"]   { background: #1a3a1a; }
+.mp-timer-band[data-period="auto"] #periodText,
+.mp-timer-band[data-period="auto"] #timerText { color: #4f4; }
+.mp-timer-band[data-period="teleop"]  { background: #1a1a3a; }
+.mp-timer-band[data-period="teleop"] #periodText,
+.mp-timer-band[data-period="teleop"] #timerText { color: #4af; }
+.mp-timer-band[data-period="pause"],
+.mp-timer-band[data-period="warmup"]  { background: #3a3a1a; }
+.mp-timer-band[data-period="pause"] #periodText,
+.mp-timer-band[data-period="pause"] #timerText,
+.mp-timer-band[data-period="warmup"] #periodText,
+.mp-timer-band[data-period="warmup"] #timerText { color: #fc3; }
+
+/* Station card grid */
+.mp-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+.mp-card {
+  border-radius: 6px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: background 0.2s;
+}
+.mp-card[data-estop="true"] {
+  animation: mp-estop-pulse 0.7s ease-in-out infinite alternate;
+}
+.mp-card[data-astop="true"]:not([data-estop="true"]) {
+  background: #443 !important;
+}
+@keyframes mp-estop-pulse {
+  from { background-color: #600; }
+  to   { background-color: #c00; }
+}
+
+/* Card top row: label + team input + DS badge */
+.mp-card-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.mp-card-label {
+  font-size: 11px;
+  font-weight: bold;
+  color: #aaa;
+  min-width: 1.8ch;
+}
+.mp-team-input {
+  flex: 1;
+  min-width: 0;
+  background: #111;
+  color: #eee;
+  border: 1px solid #444;
+  border-radius: 4px;
+  padding: 2px 4px;
+  font-size: 18px;
+  font-weight: bold;
+  height: 32px;
+}
+.mp-team-input:disabled {
+  opacity: 0.6;
+}
+.mp-card-ds {
+  font-size: 11px;
+  padding: 2px 4px;
+  border-radius: 3px;
+  background: #555;
+  white-space: nowrap;
+}
+.mp-card-ds[data-ok="true"]  { background: #0a0; }
+.mp-card-ds[data-ok="mid"]   { background: #870; }
+.mp-card-ds[data-ok="false"] { background: #600; }
+
+/* Card bottom row: E-stop + Bypass */
+.mp-card-bottom {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* E-Stop button */
+.mp-estop-btn {
+  flex: 1;
+  background: #a00;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: bold;
+  padding: 6px 4px;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+  position: relative;
+  overflow: hidden;
+}
+.mp-estop-btn:hover { background: #c00; }
+.mp-estop-btn.estop-holding { background: #f00; }
+.mp-estop-btn.estop-holding::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  background: rgba(255,255,255,0.8);
+  animation: mp-estop-fill 0.6s linear forwards;
+}
+@keyframes mp-estop-fill {
+  from { width: 0; }
+  to   { width: 100%; }
+}
+/* Active E-stop (robot is e-stopped): button turns green to indicate it can be cleared */
+.mp-estop-btn[data-active="true"] {
+  background: #060;
+}
+.mp-estop-btn[data-active="true"]:hover { background: #080; }
+
+/* Bypass label */
+.mp-bypass-label {
+  font-size: 11px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+}
+
+/* Control buttons row */
+.mp-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.btn-mp {
+  flex: 1;
+  min-width: 90px;
+  height: 48px;
+  font-size: 14px;
+  font-weight: bold;
+}
+
+/* Status bar */
+.mp-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+/* ── Pi small-screen overrides: keep key match-play controls usable at ~720px */
 @media (max-width: 767px) {
   .ds-status, .radio-status, .robot-status, .bypass-status {
     width: 48px;

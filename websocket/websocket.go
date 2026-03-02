@@ -39,6 +39,7 @@ func NewWebsocket(w http.ResponseWriter, r *http.Request) (*Websocket, error) {
 	if err != nil {
 		return nil, err
 	}
+	conn.SetReadLimit(64 * 1024)
 	return &Websocket{conn, new(sync.Mutex)}, nil
 }
 

@@ -8,6 +8,7 @@ package field
 import (
 	"github.com/Team254/cheesy-arena/game"
 	"github.com/Team254/cheesy-arena/model"
+	"github.com/Team254/cheesy-arena/network"
 	"github.com/Team254/cheesy-arena/websocket"
 )
 
@@ -24,6 +25,19 @@ type MatchTimeMessage struct {
 	MatchTimeSec int
 }
 
+// allianceStationView is a JSON-safe projection of AllianceStation.
+// AllianceStation uses atomic.Bool for EStop/AStop/Bypass, which serializes as {} in JSON.
+// This struct materialises those values so the JavaScript UI receives correct booleans.
+type allianceStationView struct {
+	DsConn     *DriverStationConnection
+	Ethernet   bool
+	AStop      bool
+	EStop      bool
+	Bypass     bool
+	Team       *model.Team
+	WifiStatus network.TeamWifiStatus
+}
+
 // Instantiates notifiers and configures their message producing methods.
 func (arena *Arena) configureNotifiers() {
 	arena.ArenaStatusNotifier = websocket.NewNotifier("arenaStatus", arena.generateArenaStatusMessage)
@@ -34,22 +48,34 @@ func (arena *Arena) configureNotifiers() {
 }
 
 func (arena *Arena) generateArenaStatusMessage() any {
+	stationViews := make(map[string]allianceStationView, len(arena.AllianceStations))
+	for k, as := range arena.AllianceStations {
+		stationViews[k] = allianceStationView{
+			DsConn:     as.DsConn,
+			Ethernet:   as.Ethernet,
+			AStop:      as.AStop.Load(),
+			EStop:      as.EStop.Load(),
+			Bypass:     as.Bypass.Load(),
+			Team:       as.Team,
+			WifiStatus: as.WifiStatus,
+		}
+	}
 	return &struct {
-		MatchId          int
-		AllianceStations map[string]*AllianceStation
+		MatchId                   int
+		AllianceStations          map[string]allianceStationView
 		MatchState
-		CanStartMatch              bool
-		AccessPointStatus          string
-		SwitchStatus               string
-		RedSCCStatus               string
-		BlueSCCStatus              string
-		PlcIsHealthy               bool
-		FieldEStop                 bool
-		PlcArmorBlockStatuses      map[string]bool
-		FreePracticeReconfiguring  bool
+		CanStartMatch             bool
+		AccessPointStatus         string
+		SwitchStatus              string
+		RedSCCStatus              string
+		BlueSCCStatus             string
+		PlcIsHealthy              bool
+		FieldEStop                bool
+		PlcArmorBlockStatuses     map[string]bool
+		FreePracticeReconfiguring bool
 	}{
 		arena.CurrentMatch.Id,
-		arena.AllianceStations,
+		stationViews,
 		arena.MatchState,
 		arena.checkCanStartMatch() == nil,
 		arena.accessPoint.Status,

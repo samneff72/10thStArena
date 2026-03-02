@@ -16,10 +16,10 @@ import (
 func TestMatchPlay(t *testing.T) {
 	web := setupTestWeb(t)
 
-	// Check that some text near the bottom of the page is present.
+	// Check that the page renders and contains the Free Practice link.
 	recorder := web.getHttpResponse("/match_play")
 	assert.Equal(t, 200, recorder.Code)
-	assert.Contains(t, recorder.Body.String(), "Are you sure you want to discard the results for this match?")
+	assert.Contains(t, recorder.Body.String(), "Free Practice")
 }
 
 func TestMatchPlayMatchList(t *testing.T) {
