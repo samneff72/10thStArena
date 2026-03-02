@@ -28,7 +28,6 @@ const (
 	dsPacketWarningMs        = 550
 	periodicTaskPeriodSec    = 30
 	matchEndScoreDwellSec    = 3
-	postTimeoutSec           = 4
 	preLoadNextMatchDelaySec = 5
 	scheduledBreakDelaySec   = 5
 	earlyLateThresholdMin    = 2.5
@@ -46,8 +45,6 @@ const (
 	PausePeriod
 	TeleopPeriod
 	PostMatch
-	TimeoutActive
-	PostTimeout
 	FreePractice // Sibling branch to match-play path; no timers.
 )
 
@@ -184,7 +181,7 @@ func (arena *Arena) LoadSettings() error {
 
 // Sets up the arena for the given match.
 func (arena *Arena) LoadMatch(match *model.Match) error {
-	if arena.MatchState != PreMatch && arena.MatchState != TimeoutActive {
+	if arena.MatchState != PreMatch {
 		return fmt.Errorf("cannot load match while there is a match still in progress or with results pending")
 	}
 
@@ -345,16 +342,10 @@ func (arena *Arena) StartMatch() error {
 	return err
 }
 
-// Kills the current match or timeout if it is underway.
+// Kills the current match if it is underway.
 func (arena *Arena) AbortMatch() error {
-	if arena.MatchState == PreMatch || arena.MatchState == PostMatch || arena.MatchState == PostTimeout {
+	if arena.MatchState == PreMatch || arena.MatchState == PostMatch {
 		return fmt.Errorf("cannot abort match when it is not in progress")
-	}
-
-	if arena.MatchState == TimeoutActive {
-		// Handle by advancing the timeout clock to the end and letting the regular logic deal with it.
-		arena.MatchStartTime = time.Now().Add(-time.Second * time.Duration(game.MatchTiming.TimeoutDurationSec))
-		return nil
 	}
 
 	if arena.MatchState != WarmupPeriod {
@@ -367,12 +358,10 @@ func (arena *Arena) AbortMatch() error {
 
 // Clears out the match and resets the arena state unless there is a match underway.
 func (arena *Arena) ResetMatch() error {
-	if arena.MatchState != PostMatch && arena.MatchState != PreMatch && arena.MatchState != TimeoutActive {
+	if arena.MatchState != PostMatch && arena.MatchState != PreMatch {
 		return fmt.Errorf("cannot reset match while it is in progress")
 	}
-	if arena.MatchState != TimeoutActive {
-		arena.MatchState = PreMatch
-	}
+	arena.MatchState = PreMatch
 	arena.matchAborted = false
 	arena.AllianceStations["R1"].Bypass.Store(false)
 	arena.AllianceStations["R2"].Bypass.Store(false)
@@ -467,14 +456,6 @@ func (arena *Arena) Update() {
 				time.Sleep(time.Second * preLoadNextMatchDelaySec)
 				arena.preLoadNextMatch()
 			}()
-		}
-	case TimeoutActive:
-		if matchTimeSec >= float64(game.MatchTiming.TimeoutDurationSec) {
-			arena.MatchState = PostTimeout
-		}
-	case PostTimeout:
-		if matchTimeSec >= float64(game.MatchTiming.TimeoutDurationSec+postTimeoutSec) {
-			arena.MatchState = PreMatch
 		}
 	case FreePractice:
 		// No timer logic. Grant field-enable to all stations unless a slot change is in progress.
@@ -803,10 +784,6 @@ func (arena *Arena) handlePlcInputOutput() {
 		if arena.lastMatchState != PreMatch {
 			arena.Plc.SetFieldResetLight(true)
 		}
-		fallthrough
-	case TimeoutActive:
-		fallthrough
-	case PostTimeout:
 		// Set the stack light state -- solid alliance color(s) if robots are not connected, solid orange if scores are
 		// not input, or blinking green if ready.
 		greenStackLight := redAllianceReady && blueAllianceReady && arena.Plc.GetCycleState(2, 0, 2)
@@ -864,7 +841,7 @@ func (arena *Arena) handleTeamStop(station string, eStopState, aStopState bool) 
 }
 
 func (arena *Arena) handleSounds(matchTimeSec float64) {
-	if arena.MatchState == PreMatch || arena.MatchState == TimeoutActive || arena.MatchState == PostTimeout {
+	if arena.MatchState == PreMatch || arena.MatchState == FreePractice {
 		// Only apply this logic during a match.
 		return
 	}

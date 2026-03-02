@@ -92,7 +92,7 @@ func (arena *Arena) getEarlyLateMessage() string {
 			}
 		}
 
-		if arena.MatchState == PreMatch || arena.MatchState == TimeoutActive || arena.MatchState == PostTimeout {
+		if arena.MatchState == PreMatch {
 			currentMinutesLate := time.Now().Sub(currentMatch.Time).Minutes()
 			if previousMatchIndex >= 0 &&
 				currentMatch.Time.Sub(matches[previousMatchIndex].Time).Minutes() <= MaxMatchGapMin {

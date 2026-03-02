@@ -260,14 +260,6 @@ func (web *Web) matchPlayWebsocketHandler(w http.ResponseWriter, r *http.Request
 				ws.WriteError(err.Error())
 				continue
 			}
-		case "startTimeout":
-			durationSec, ok := data.(float64)
-			if !ok {
-				ws.WriteError(fmt.Sprintf("Failed to parse '%s' message.", messageType))
-				continue
-			}
-			_ = durationSec
-			// Timeout functionality removed.
 		case "setTestMatchName":
 			if web.arena.CurrentMatch.Type != model.Test {
 				// Don't allow changing the name of a non-test match.
