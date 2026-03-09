@@ -194,13 +194,13 @@ journalctl -u cheesy-arena -f
 4. Wait for all Driver Stations to show green (DS Linked, Radio Linked, Robot Linked).
 5. Click **Start Match**.
 
-Match timing defaults:
+Match timing defaults (2026 REBUILT):
 
 | Period  | Duration |
 |---------|----------|
-| Auto    | 15 s     |
+| Auto    | 20 s     |
 | Pause   | 3 s      |
-| Teleop  | 135 s    |
+| Teleop  | 140 s    |
 
 ### Ports used by the service
 
@@ -219,9 +219,9 @@ To change match timing, go to **Setup > Settings** and adjust the duration field
 
 | Setting                 | Default |
 |-------------------------|---------|
-| Auto duration           | 15 s    |
+| Auto duration           | 20 s    |
 | Pause duration          | 3 s     |
-| Teleop duration         | 135 s   |
+| Teleop duration         | 140 s   |
 | HTTP port               | 8080    |
 
 Network credentials (AP address, AP password, switch address, switch password) are also set in the Settings page and stored in the local database.
