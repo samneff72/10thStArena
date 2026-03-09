@@ -75,6 +75,13 @@ func readWebsocketMultiple(t *testing.T, ws *websocket.Websocket, count int) map
 	return messages
 }
 
+func TestRootRedirect(t *testing.T) {
+	web := setupTestWeb(t)
+	recorder := web.getHttpResponse("/")
+	assert.Equal(t, http.StatusFound, recorder.Code)
+	assert.Equal(t, "/match_play", recorder.Header().Get("Location"))
+}
+
 func setupTestWeb(t *testing.T) *Web {
 	game.MatchTiming.WarmupDurationSec = 3
 	game.MatchTiming.PauseDurationSec = 2

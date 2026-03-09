@@ -105,6 +105,9 @@ func addNoCacheHeader(handler http.Handler) http.Handler {
 // Sets up the mapping between URLs and handlers.
 func (web *Web) newHandler() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/match_play", http.StatusFound)
+	})
 	mux.HandleFunc("GET /login", web.loginHandler)
 	mux.HandleFunc("POST /login", web.loginPostHandler)
 	mux.HandleFunc("GET /match_play", web.matchPlayHandler)
