@@ -85,6 +85,64 @@ func TestConfigureSwitch(t *testing.T) {
 	)
 }
 
+func TestGetStationForTeamId(t *testing.T) {
+	sw := NewSwitch("127.0.0.1", "password")
+	sw.port = 9060
+
+	ciscoArpOutput := "password\nenable\npassword\nterminal length 0\n" +
+		"Protocol  Address     Age(min)  Hardware Addr   Type   Interface\n" +
+		"Internet  10.2.54.5       2     0050.b6ff.ee5   ARPA   Vlan20\n" +
+		"exit\n"
+
+	// Returns correct station when switch ARP table has an entry.
+	var command string
+	mockTelnetSingleWithResponse(t, sw.port, ciscoArpOutput, &command)
+	station, err := sw.GetStationForTeamId(254)
+	assert.Nil(t, err)
+	assert.Equal(t, "R2", station)
+
+	// Returns "" when ARP table has no Vlan entry.
+	sw.port++
+	noArpOutput := "password\nenable\npassword\nterminal length 0\n% IP ARP table is empty\nexit\n"
+	mockTelnetSingleWithResponse(t, sw.port, noArpOutput, &command)
+	station, err = sw.GetStationForTeamId(254)
+	assert.Nil(t, err)
+	assert.Equal(t, "", station)
+
+	// Returns "" when VLAN is not in the known map.
+	sw.port++
+	unknownVlanOutput := "password\nenable\npassword\nterminal length 0\nInternet  10.2.54.5  2  0050.b6ff.ee5  ARPA  Vlan99\nexit\n"
+	mockTelnetSingleWithResponse(t, sw.port, unknownVlanOutput, &command)
+	station, err = sw.GetStationForTeamId(254)
+	assert.Nil(t, err)
+	assert.Equal(t, "", station)
+
+	// Returns "" when switch address is empty.
+	emptySw := NewSwitch("", "password")
+	station, err = emptySw.GetStationForTeamId(254)
+	assert.Nil(t, err)
+	assert.Equal(t, "", station)
+}
+
+func mockTelnetSingleWithResponse(t *testing.T, port int, response string, command *string) {
+	go func() {
+		ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+		assert.Nil(t, err)
+		defer ln.Close()
+		*command = ""
+
+		conn, err := ln.Accept()
+		assert.Nil(t, err)
+		conn.SetReadDeadline(time.Now().Add(10 * time.Millisecond))
+		var reader bytes.Buffer
+		reader.ReadFrom(conn)
+		*command = reader.String()
+		conn.Write([]byte(response))
+		conn.Close()
+	}()
+	time.Sleep(100 * time.Millisecond)
+}
+
 func mockTelnet(t *testing.T, port int, command1 *string, command2 *string) {
 	go func() {
 		ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port))

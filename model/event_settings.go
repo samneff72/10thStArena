@@ -75,6 +75,7 @@ type EventSettings struct {
 	TeamSignBlue2Id                  int
 	TeamSignBlue3Id                  int
 	TeamSignBlueTimerId              int
+	AutoConfigureTeams               bool
 	UseLiteUdpPort                   bool
 	BlackmagicAddresses              string
 	CompanionAddress                 string
@@ -136,6 +137,7 @@ func (database *Database) GetEventSettings() (*EventSettings, error) {
 		SelectionRound3Order:        "",
 		SelectionShowUnpickedTeams:  true,
 		TbaDownloadEnabled:          false,
+		AutoConfigureTeams:          true,
 		ApChannel:                   36,
 		SCCUpCommands:               strings.Join(sccDefaultUpCommands, "\n"),
 		SCCDownCommands:             strings.Join(sccDefaultDownCommands, "\n"),

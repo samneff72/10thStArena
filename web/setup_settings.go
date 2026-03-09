@@ -103,6 +103,7 @@ func (web *Web) settingsPostHandler(w http.ResponseWriter, r *http.Request) {
 	eventSettings.TeamSignBlue2Id, _ = strconv.Atoi(r.PostFormValue("teamSignBlue2Id"))
 	eventSettings.TeamSignBlue3Id, _ = strconv.Atoi(r.PostFormValue("teamSignBlue3Id"))
 	eventSettings.TeamSignBlueTimerId, _ = strconv.Atoi(r.PostFormValue("teamSignBlueTimerId"))
+	eventSettings.AutoConfigureTeams = r.PostFormValue("autoConfigureTeams") == "on"
 	eventSettings.UseLiteUdpPort = r.PostFormValue("useLiteUdpPort") == "on"
 	eventSettings.BlackmagicAddresses = r.PostFormValue("blackmagicAddresses")
 	eventSettings.CompanionAddress = r.PostFormValue("companionAddress")

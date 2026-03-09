@@ -1254,3 +1254,88 @@ func trussLightWarningSequence(matchTimeSec float64) (bool, [3]bool) {
 	}
 	return step < len(sequence), lights
 }
+
+// stationOrder is the fill order for auto-assignment fallback (R1→R2→R3→B1→B2→B3).
+var stationOrder = []string{"R1", "R2", "R3", "B1", "B2", "B3"}
+
+// autoAssignTeam detects the physical station for the connecting team (via switch VLAN
+// query) and assigns them to it. Falls back to the first empty station if detection fails.
+// Creates a DB record for the team if one does not already exist.
+// Returns the assigned station name, or "" if unavailable.
+func (arena *Arena) autoAssignTeam(teamId int) string {
+	if arena.MatchState != PreMatch {
+		return ""
+	}
+	if !arena.CurrentMatch.ShouldAllowSubstitution() {
+		return ""
+	}
+
+	// Ensure the team exists in the DB with a valid WPA key.
+	team, err := arena.Database.GetTeamById(teamId)
+	if err != nil {
+		log.Printf("Error looking up Team %d for auto-assignment: %v", teamId, err)
+		return ""
+	}
+	if team == nil {
+		team = &model.Team{
+			Id:     teamId,
+			WpaKey: fmt.Sprintf("%08d", teamId),
+		}
+		if err := arena.Database.CreateTeam(team); err != nil {
+			log.Printf("Error creating Team %d for auto-assignment: %v", teamId, err)
+			return ""
+		}
+	}
+
+	// Try to detect the physical station via the switch VLAN/ARP table.
+	station, err := arena.networkSwitch.GetStationForTeamId(teamId)
+	if err != nil {
+		log.Printf("Switch station detection for Team %d failed: %v; falling back to sequential.", teamId, err)
+	}
+
+	// If switch detection succeeded and the station is empty, use it;
+	// otherwise fall back to the first available empty station.
+	if station == "" || arena.AllianceStations[station].Team != nil {
+		station = ""
+		for _, s := range stationOrder {
+			if arena.AllianceStations[s].Team == nil {
+				station = s
+				break
+			}
+		}
+	}
+	if station == "" {
+		log.Printf("No empty station available for auto-assignment of Team %d.", teamId)
+		return ""
+	}
+
+	if err := arena.assignTeam(teamId, station); err != nil {
+		log.Printf("Error auto-assigning Team %d to %s: %v", teamId, station, err)
+		return ""
+	}
+	switch station {
+	case "R1":
+		arena.CurrentMatch.Red1 = teamId
+	case "R2":
+		arena.CurrentMatch.Red2 = teamId
+	case "R3":
+		arena.CurrentMatch.Red3 = teamId
+	case "B1":
+		arena.CurrentMatch.Blue1 = teamId
+	case "B2":
+		arena.CurrentMatch.Blue2 = teamId
+	case "B3":
+		arena.CurrentMatch.Blue3 = teamId
+	}
+	arena.setupNetwork([6]*model.Team{
+		arena.AllianceStations["R1"].Team, arena.AllianceStations["R2"].Team,
+		arena.AllianceStations["R3"].Team, arena.AllianceStations["B1"].Team,
+		arena.AllianceStations["B2"].Team, arena.AllianceStations["B3"].Team,
+	}, false)
+	arena.MatchLoadNotifier.Notify()
+	if arena.CurrentMatch.Type != model.Test {
+		arena.Database.UpdateMatch(arena.CurrentMatch)
+	}
+	log.Printf("Auto-assigned Team %d to station %s.", teamId, station)
+	return station
+}

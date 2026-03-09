@@ -9,6 +9,9 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"regexp"
+	"strconv"
+
 	"github.com/Team254/cheesy-arena/model"
 	"net"
 	"sync"
@@ -163,4 +166,33 @@ func (sw *Switch) runCommand(command string) (string, error) {
 // and returns it as a string.
 func (sw *Switch) runConfigCommand(command string) (string, error) {
 	return sw.runCommand(fmt.Sprintf("config terminal\n%send\n", command))
+}
+
+var vlanToAllianceStation = map[int]string{
+	10: "R1", 20: "R2", 30: "R3",
+	40: "B1", 50: "B2", 60: "B3",
+}
+
+// GetStationForTeamId queries the switch ARP table to determine which alliance station
+// a team is physically connected to. Returns "" if the switch is unconfigured or the
+// team IP has no ARP entry.
+func (sw *Switch) GetStationForTeamId(teamId int) (string, error) {
+	if sw.address == "" {
+		return "", nil
+	}
+	teamIp := fmt.Sprintf("10.%d.%d.5", teamId/100, teamId%100)
+	output, err := sw.runCommand(fmt.Sprintf("show ip arp %s\n", teamIp))
+	if err != nil {
+		return "", err
+	}
+	// Cisco IOS output example:
+	//   Protocol  Address     Age(min)  Hardware Addr   Type   Interface
+	//   Internet  10.2.54.5       2     0050.b6ff.ee5   ARPA   Vlan20
+	re := regexp.MustCompile(`Vlan(\d+)`)
+	matches := re.FindStringSubmatch(output)
+	if matches == nil {
+		return "", nil
+	}
+	vlan, _ := strconv.Atoi(matches[1])
+	return vlanToAllianceStation[vlan], nil
 }
