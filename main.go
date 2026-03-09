@@ -81,7 +81,7 @@ func loadConfig(path string) (*Config, error) {
 // An empty driver string returns a no-op implementation.
 func buildFieldLights(cfg *Config) hardware.FieldLights {
 	switch cfg.FieldLightsDriver {
-	case "":
+	case "", "none":
 		return &hardware.NoopFieldLights{}
 	case "serial":
 		baud := cfg.FieldLightsBaud

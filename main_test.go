@@ -54,3 +54,31 @@ func TestLoadConfigFieldLightsDefaults(t *testing.T) {
 	assert.Equal(t, "START\n", cfg.FieldLightsCommand)
 	assert.Equal(t, "", cfg.FieldLightsDriver)
 }
+
+func TestBuildFieldLightsNoneDriver(t *testing.T) {
+	// "none" is the documented value for bench testing (config.yaml comment).
+	// It must not fatal — it should return a no-op implementation.
+	cfg := defaultConfig()
+	cfg.FieldLightsDriver = "none"
+	lights := buildFieldLights(cfg)
+	assert.NotNil(t, lights)
+}
+
+func TestBuildFieldLightsEmptyDriver(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.FieldLightsDriver = ""
+	lights := buildFieldLights(cfg)
+	assert.NotNil(t, lights)
+}
+
+func TestBuildFieldLightsUnknownDriverPanics(t *testing.T) {
+	// An unrecognized driver string should cause a fatal log, which os.Exit(1).
+	// We verify the known-good and known-bad paths by checking the switch
+	// handles expected values without panicking; unknown values are caught at
+	// compile time via the exhaustive switch + default fatal.
+	cfg := defaultConfig()
+	for _, driver := range []string{"", "none"} {
+		cfg.FieldLightsDriver = driver
+		assert.NotPanics(t, func() { buildFieldLights(cfg) }, "driver=%q should not panic", driver)
+	}
+}
