@@ -149,6 +149,39 @@ func TestSetupSettingsBackupRestoreDb(t *testing.T) {
 	assert.Equal(t, "Chezy Champs", web.arena.EventSettings.Name)
 }
 
+func TestSetupSettingsFieldTabRemovedFields(t *testing.T) {
+	web := setupTestWeb(t)
+	recorder := web.getHttpResponse("/setup/settings")
+	assert.Equal(t, 200, recorder.Code)
+	body := recorder.Body.String()
+	assert.NotContains(t, body, "apPassword")
+	assert.NotContains(t, body, "switchDSPortUpCommands")
+	assert.NotContains(t, body, "switchDSPortDownCommands")
+}
+
+func TestSetupSettingsOmittedFieldBehavior(t *testing.T) {
+	web := setupTestWeb(t)
+
+	// Pre-set AP password and capture default DS port commands.
+	web.arena.EventSettings.ApPassword = "secret"
+	assert.Nil(t, web.arena.Database.UpdateEventSettings(web.arena.EventSettings))
+	originalUp := web.arena.EventSettings.SwitchDSPortUpCommands
+	originalDown := web.arena.EventSettings.SwitchDSPortDownCommands
+	assert.NotEmpty(t, originalUp)
+	assert.NotEmpty(t, originalDown)
+
+	// POST without apPassword, switchDSPortUpCommands, or switchDSPortDownCommands fields.
+	recorder := web.postHttpResponse("/setup/settings", "name=Test+Event")
+	assert.Equal(t, 303, recorder.Code)
+
+	// AP password should be cleared to empty string (intentional default).
+	assert.Equal(t, "", web.arena.EventSettings.ApPassword)
+
+	// DS port commands should be unchanged.
+	assert.Equal(t, originalUp, web.arena.EventSettings.SwitchDSPortUpCommands)
+	assert.Equal(t, originalDown, web.arena.EventSettings.SwitchDSPortDownCommands)
+}
+
 func (web *Web) postFileHttpResponse(path string, paramName string, file *bytes.Buffer) *httptest.ResponseRecorder {
 	body := new(bytes.Buffer)
 	writer := multipart.NewWriter(body)

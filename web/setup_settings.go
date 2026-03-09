@@ -58,8 +58,7 @@ func (web *Web) settingsPostHandler(w http.ResponseWriter, r *http.Request) {
 	eventSettings.ApChannel, _ = strconv.Atoi(r.PostFormValue("apChannel"))
 	eventSettings.SwitchAddress = r.PostFormValue("switchAddress")
 	eventSettings.SwitchPassword = r.PostFormValue("switchPassword")
-	eventSettings.SwitchDSPortUpCommands = r.PostFormValue("switchDSPortUpCommands")
-	eventSettings.SwitchDSPortDownCommands = r.PostFormValue("switchDSPortDownCommands")
+
 	eventSettings.FieldEStopPin, _ = strconv.Atoi(r.PostFormValue("fieldEStopPin"))
 	eventSettings.RedEStopPanelAddress = r.PostFormValue("redEStopPanelAddress")
 	eventSettings.BlueEStopPanelAddress = r.PostFormValue("blueEStopPanelAddress")

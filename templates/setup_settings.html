@@ -123,12 +123,6 @@ UI for configuring event settings.
                 </div>
               </div>
               <div class="row mb-3">
-                <label class="col-lg-6 control-label">AP API Password</label>
-                <div class="col-lg-6">
-                  <input type="password" class="form-control" name="apPassword" value="{{.ApPassword}}">
-                </div>
-              </div>
-              <div class="row mb-3">
                 <label class="col-lg-6 control-label">AP Channel (6 GHz)</label>
                 <div class="col-lg-6">
                   <select class="form-select" name="apChannel" value="{{.ApChannel}}">
@@ -153,18 +147,7 @@ UI for configuring event settings.
                   <input type="password" class="form-control" name="switchPassword" value="{{.SwitchPassword}}">
                 </div>
               </div>
-              <div class="row mb-3">
-                <label class="col-lg-6 control-label">DS Port Enable Commands</label>
-                <div class="col-lg-6">
-                  <textarea class="form-control" name="switchDSPortUpCommands" rows="4">{{.SwitchDSPortUpCommands}}</textarea>
-                </div>
-              </div>
-              <div class="row mb-3">
-                <label class="col-lg-6 control-label">DS Port Disable Commands</label>
-                <div class="col-lg-6">
-                  <textarea class="form-control" name="switchDSPortDownCommands" rows="4">{{.SwitchDSPortDownCommands}}</textarea>
-                </div>
-              </div>
+
             </fieldset>
             <fieldset class="mb-4">
               <legend>E-Stop Panels</legend>
