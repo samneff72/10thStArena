@@ -32,9 +32,10 @@ type EStopPanelConfig struct {
 
 // Config is the in-memory representation of config.yaml.
 type Config struct {
-	AutoDurationSec        int              `yaml:"auto_duration_seconds"`
-	PauseDurationSec       int              `yaml:"pause_duration_seconds"`
-	TeleopDurationSec      int              `yaml:"teleop_duration_seconds"`
+	AutoDurationSec             int              `yaml:"auto_duration_seconds"`
+	PauseDurationSec            int              `yaml:"pause_duration_seconds"`
+	TeleopDurationSec           int              `yaml:"teleop_duration_seconds"`
+	WarningRemainingDurationSec int              `yaml:"warning_remaining_seconds"`
 	HttpPort               int              `yaml:"http_port"`
 	NetworkSecurityEnabled bool             `yaml:"network_security_enabled"`
 	FieldLightsDriver      string           `yaml:"field_lights_driver"`
@@ -48,9 +49,10 @@ type Config struct {
 
 func defaultConfig() *Config {
 	return &Config{
-		AutoDurationSec:    15,
-		PauseDurationSec:   3,
-		TeleopDurationSec:  135,
+		AutoDurationSec:             20,
+		PauseDurationSec:            3,
+		TeleopDurationSec:           140,
+		WarningRemainingDurationSec: 30,
 		HttpPort:           8080,
 		FieldLightsBaud:    9600,
 		FieldLightsCommand: "START\n",
@@ -155,6 +157,7 @@ func main() {
 	arena.EventSettings.AutoDurationSec = cfg.AutoDurationSec
 	arena.EventSettings.PauseDurationSec = cfg.PauseDurationSec
 	arena.EventSettings.TeleopDurationSec = cfg.TeleopDurationSec
+	arena.EventSettings.WarningRemainingDurationSec = cfg.WarningRemainingDurationSec
 	arena.EventSettings.NetworkSecurityEnabled = cfg.NetworkSecurityEnabled
 	if err = arena.Database.UpdateEventSettings(arena.EventSettings); err != nil {
 		log.Fatalln("Error saving config to DB:", err)

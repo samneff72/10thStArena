@@ -3,10 +3,11 @@
 # Unknown keys produce a startup error (typo protection).
 
 # Match period durations (seconds).
-# FRC 2025 defaults: 15s auto, 3s pause, 135s teleop.
-auto_duration_seconds: 15
+# FRC 2026 defaults: 20s auto, 3s pause, 140s teleop, 30s warning.
+auto_duration_seconds: 20
 pause_duration_seconds: 3
-teleop_duration_seconds: 135
+teleop_duration_seconds: 140
+warning_remaining_seconds: 30
 
 # HTTP port for the web interface.
 http_port: 8080
