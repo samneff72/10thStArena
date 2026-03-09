@@ -15,14 +15,6 @@ import (
 	"time"
 )
 
-func TestIndex(t *testing.T) {
-	web := setupTestWeb(t)
-
-	recorder := web.getHttpResponse("/")
-	assert.Equal(t, 200, recorder.Code)
-	assert.Contains(t, recorder.Body.String(), "Home - Untitled Event - Cheesy Arena")
-}
-
 func (web *Web) getHttpResponse(path string) *httptest.ResponseRecorder {
 	recorder := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", path, nil)

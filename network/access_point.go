@@ -172,7 +172,7 @@ func (ap *AccessPoint) updateMonitoring() error {
 	if ap.password != "" {
 		httpRequest.Header.Add("Authorization", fmt.Sprintf("Bearer %s", ap.password))
 	}
-	var httpClient http.Client
+	httpClient := http.Client{Timeout: 3 * time.Second}
 	httpResponse, err := httpClient.Do(httpRequest)
 	if err != nil {
 		ap.Status = "ERROR"

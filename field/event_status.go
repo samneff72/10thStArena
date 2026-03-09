@@ -53,7 +53,6 @@ func (arena *Arena) updateCycleTime(matchStartTime time.Time) {
 	}
 	arena.EventStatus.lastMatchStartTime = matchStartTime
 	arena.EventStatus.lastMatchScheduledStartTime = arena.CurrentMatch.Time
-	arena.EventStatusNotifier.Notify()
 }
 
 // Checks how early or late the event is running and publishes an update to the displays that show it.
@@ -61,7 +60,6 @@ func (arena *Arena) updateEarlyLateMessage() {
 	newEarlyLateMessage := arena.getEarlyLateMessage()
 	if newEarlyLateMessage != arena.EventStatus.EarlyLateMessage {
 		arena.EventStatus.EarlyLateMessage = newEarlyLateMessage
-		arena.EventStatusNotifier.Notify()
 	}
 }
 
@@ -94,7 +92,7 @@ func (arena *Arena) getEarlyLateMessage() string {
 			}
 		}
 
-		if arena.MatchState == PreMatch || arena.MatchState == TimeoutActive || arena.MatchState == PostTimeout {
+		if arena.MatchState == PreMatch {
 			currentMinutesLate := time.Now().Sub(currentMatch.Time).Minutes()
 			if previousMatchIndex >= 0 &&
 				currentMatch.Time.Sub(matches[previousMatchIndex].Time).Minutes() <= MaxMatchGapMin {

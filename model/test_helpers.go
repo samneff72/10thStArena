@@ -6,7 +6,6 @@
 package model
 
 import (
-	"github.com/Team254/cheesy-arena/game"
 	"github.com/stretchr/testify/assert"
 	"path/filepath"
 	"testing"
@@ -28,8 +27,6 @@ func SetupTestDb(t *testing.T) *Database {
 
 func BuildTestMatchResult(matchId int, playNumber int) *MatchResult {
 	matchResult := &MatchResult{MatchId: matchId, PlayNumber: playNumber, MatchType: Qualification}
-	matchResult.RedScore = game.TestScore1()
-	matchResult.BlueScore = game.TestScore2()
 	matchResult.RedCards = map[string]string{"1868": "yellow"}
 	matchResult.BlueCards = map[string]string{}
 	return matchResult

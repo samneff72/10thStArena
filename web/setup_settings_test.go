@@ -5,9 +5,7 @@ package web
 
 import (
 	"bytes"
-	"github.com/Team254/cheesy-arena/game"
 	"github.com/Team254/cheesy-arena/model"
-	"github.com/Team254/cheesy-arena/tournament"
 	"github.com/stretchr/testify/assert"
 	"io"
 	"mime/multipart"
@@ -24,22 +22,16 @@ func TestSetupSettings(t *testing.T) {
 	assert.Equal(t, 200, recorder.Code)
 	assert.Contains(t, recorder.Body.String(), "Untitled Event")
 	assert.Contains(t, recorder.Body.String(), "8")
-	assert.NotContains(t, recorder.Body.String(), "tbaPublishingEnabled\"  checked")
 
 	// Change the settings and check the response.
 	recorder = web.postHttpResponse(
 		"/setup/settings",
-		"name=Chezy Champs&code=CC&playoffType=single&numPlayoffAlliances=16&tbaPublishingEnabled=on&"+
-			"tbaEventCode=2014cc&tbaSecretId=secretId&tbaSecret=tbasec",
+		"name=Chezy Champs&playoffType=single&numPlayoffAlliances=16",
 	)
 	assert.Equal(t, 303, recorder.Code)
 	recorder = web.getHttpResponse("/setup/settings")
 	assert.Contains(t, recorder.Body.String(), "Chezy Champs")
 	assert.Contains(t, recorder.Body.String(), "16")
-	assert.Contains(t, recorder.Body.String(), "tbaPublishingEnabled\"  checked")
-	assert.Contains(t, recorder.Body.String(), "2014cc")
-	assert.Contains(t, recorder.Body.String(), "secretId")
-	assert.Contains(t, recorder.Body.String(), "tbasec")
 }
 
 func TestSetupSettingsDoubleElimination(t *testing.T) {
@@ -80,9 +72,7 @@ func TestSetupSettingsClearDb(t *testing.T) {
 		assert.Nil(t, web.arena.Database.CreateMatchResult(&model.MatchResult{MatchId: 1, PlayNumber: 2}))
 		assert.Nil(t, web.arena.Database.CreateMatchResult(&model.MatchResult{MatchId: 2, PlayNumber: 1}))
 		assert.Nil(t, web.arena.Database.CreateMatchResult(&model.MatchResult{MatchId: 3, PlayNumber: 1}))
-		assert.Nil(t, web.arena.Database.CreateRanking(&game.Ranking{TeamId: 254}))
 		assert.Nil(t, web.arena.Database.CreateAlliance(&model.Alliance{Id: 1}))
-		web.arena.AllianceSelectionAlliances = append(web.arena.AllianceSelectionAlliances, model.Alliance{Id: 1})
 	}
 
 	// Test clearing practice data.
@@ -104,13 +94,8 @@ func TestSetupSettingsClearDb(t *testing.T) {
 	assert.NotEmpty(t, matches)
 	matchResult, _ = web.arena.Database.GetMatchResultForMatch(3)
 	assert.NotNil(t, matchResult)
-	rankings, _ := web.arena.Database.GetAllRankings()
-	assert.NotEmpty(t, rankings)
-	tournament.CalculateRankings(web.arena.Database, false)
-	assert.NotEmpty(t, rankings)
 	alliances, _ := web.arena.Database.GetAllAlliances()
 	assert.NotEmpty(t, alliances)
-	assert.NotEmpty(t, web.arena.AllianceSelectionAlliances)
 
 	// Test clearing qualification data.
 	web = setupTestWeb(t)
@@ -131,13 +116,8 @@ func TestSetupSettingsClearDb(t *testing.T) {
 	assert.NotEmpty(t, matches)
 	matchResult, _ = web.arena.Database.GetMatchResultForMatch(3)
 	assert.NotNil(t, matchResult)
-	rankings, _ = web.arena.Database.GetAllRankings()
-	assert.Empty(t, rankings)
-	tournament.CalculateRankings(web.arena.Database, false)
-	assert.Empty(t, rankings)
 	alliances, _ = web.arena.Database.GetAllAlliances()
 	assert.NotEmpty(t, alliances)
-	assert.NotEmpty(t, web.arena.AllianceSelectionAlliances)
 
 	// Test clearing playoff data.
 	web = setupTestWeb(t)
@@ -158,13 +138,8 @@ func TestSetupSettingsClearDb(t *testing.T) {
 	assert.Empty(t, matches)
 	matchResult, _ = web.arena.Database.GetMatchResultForMatch(3)
 	assert.Nil(t, matchResult)
-	rankings, _ = web.arena.Database.GetAllRankings()
-	assert.NotEmpty(t, rankings)
-	tournament.CalculateRankings(web.arena.Database, false)
-	assert.NotEmpty(t, rankings)
 	alliances, _ = web.arena.Database.GetAllAlliances()
 	assert.Empty(t, alliances)
-	assert.Empty(t, web.arena.AllianceSelectionAlliances)
 
 	// Test with invalid match types.
 	recorder = web.postHttpResponse("/setup/db/clear/all", "")
@@ -205,33 +180,6 @@ func TestSetupSettingsBackupRestoreDb(t *testing.T) {
 	// Check restoring with the backup retrieved before.
 	recorder = web.postFileHttpResponse("/setup/db/restore", "databaseFile", backupBody)
 	assert.Equal(t, "Chezy Champs", web.arena.EventSettings.Name)
-}
-
-func TestSetupSettingsPublishToTba(t *testing.T) {
-	web := setupTestWeb(t)
-
-	web.arena.TbaClient.BaseUrl = "fakeurl"
-	web.arena.EventSettings.TbaPublishingEnabled = true
-
-	recorder := web.getHttpResponse("/setup/settings/publish_alliances")
-	assert.Equal(t, 500, recorder.Code)
-	assert.Contains(t, recorder.Body.String(), "Failed to publish alliances")
-
-	recorder = web.getHttpResponse("/setup/settings/publish_awards")
-	assert.Equal(t, 500, recorder.Code)
-	assert.Contains(t, recorder.Body.String(), "Failed to publish awards")
-
-	recorder = web.getHttpResponse("/setup/settings/publish_matches")
-	assert.Equal(t, 500, recorder.Code)
-	assert.Contains(t, recorder.Body.String(), "Failed to delete published matches")
-
-	recorder = web.getHttpResponse("/setup/settings/publish_rankings")
-	assert.Equal(t, 500, recorder.Code)
-	assert.Contains(t, recorder.Body.String(), "Failed to publish rankings")
-
-	recorder = web.getHttpResponse("/setup/settings/publish_teams")
-	assert.Equal(t, 500, recorder.Code)
-	assert.Contains(t, recorder.Body.String(), "Failed to publish teams")
 }
 
 func (web *Web) postFileHttpResponse(path string, paramName string, file *bytes.Buffer) *httptest.ResponseRecorder {

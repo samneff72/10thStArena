@@ -17,8 +17,7 @@ const matchStates = {
   4: "PAUSE_PERIOD",
   5: "TELEOP_PERIOD",
   6: "POST_MATCH",
-  7: "TIMEOUT_ACTIVE",
-  8: "POST_TIMEOUT"
+  7: "FREE_PRACTICE"
 };
 let matchTiming;
 
@@ -51,9 +50,8 @@ const translateMatchTime = function (data, callback) {
     case "POST_MATCH":
       matchStateText = "POST-MATCH";
       break;
-    case "TIMEOUT_ACTIVE":
-    case "POST_TIMEOUT":
-      matchStateText = "TIMEOUT";
+    case "FREE_PRACTICE":
+      matchStateText = "FREE PRACTICE";
       break;
   }
   callback(matchStates[data.MatchState], matchStateText, getCountdown(data.MatchState, data.MatchTimeSec));
@@ -71,8 +69,6 @@ const getCountdown = function (matchState, matchTimeSec) {
     case "TELEOP_PERIOD":
       return matchTiming.WarmupDurationSec + matchTiming.AutoDurationSec + matchTiming.TeleopDurationSec +
         matchTiming.PauseDurationSec - matchTimeSec;
-    case "TIMEOUT_ACTIVE":
-      return matchTiming.TimeoutDurationSec - matchTimeSec;
     default:
       return 0;
   }

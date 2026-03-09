@@ -1,7 +1,8 @@
 [Unit]
 Description=Cheesy Arena practice server
-# Wait for the network interface to be up before starting.
-After=network.target
+# network-online.target waits for IP assignment; network.target fires too early.
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
