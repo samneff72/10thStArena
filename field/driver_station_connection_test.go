@@ -170,7 +170,8 @@ func TestListenForDriverStations(t *testing.T) {
 		tcpConn.Close()
 	}
 
-	// Connect as a team not in the current match.
+	// Connect as a team not in the current match (auto-configure disabled so it gets rejected).
+	arena.EventSettings.AutoConfigureTeams = false
 	tcpConn, err = net.Dial("tcp", "127.0.0.1:1750")
 	if assert.Nil(t, err) {
 		dataSend := [5]byte{0, 3, 24, 5, 223}
@@ -180,6 +181,7 @@ func TestListenForDriverStations(t *testing.T) {
 		assert.NotNil(t, err)
 		tcpConn.Close()
 	}
+	arena.EventSettings.AutoConfigureTeams = true
 
 	// Connect as a team in the current match.
 	arena.assignTeam(1503, "B2")

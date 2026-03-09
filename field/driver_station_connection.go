@@ -332,13 +332,18 @@ func (arena *Arena) listenForDriverStations() {
 		// Check to see if the team is supposed to be on the field, and notify the DS accordingly.
 		assignedStation := arena.getAssignedAllianceStation(teamId)
 		if assignedStation == "" {
-			log.Printf("Rejecting connection from Team %d, who is not in the current match, soon.", teamId)
-			go func() {
-				// Wait a second and then close it so it doesn't chew up bandwidth constantly trying to reconnect.
-				time.Sleep(time.Second)
-				tcpConn.Close()
-			}()
-			continue
+			if arena.EventSettings.AutoConfigureTeams {
+				assignedStation = arena.autoAssignTeam(teamId)
+			}
+			if assignedStation == "" {
+				log.Printf("Rejecting connection from Team %d, who is not in the current match, soon.", teamId)
+				go func() {
+					// Wait a second and then close it so it doesn't chew up bandwidth constantly trying to reconnect.
+					time.Sleep(time.Second)
+					tcpConn.Close()
+				}()
+				continue
+			}
 		}
 
 		// Read the team number from the IP address to check for a station mismatch.
