@@ -79,7 +79,7 @@ func TestRootRedirect(t *testing.T) {
 	web := setupTestWeb(t)
 	recorder := web.getHttpResponse("/")
 	assert.Equal(t, http.StatusFound, recorder.Code)
-	assert.Equal(t, "/match_play", recorder.Header().Get("Location"))
+	assert.Equal(t, "/free_practice", recorder.Header().Get("Location"))
 }
 
 func setupTestWeb(t *testing.T) *Web {

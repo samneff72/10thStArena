@@ -10,24 +10,14 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"sort"
 
 	"github.com/Team254/cheesy-arena/field"
-	"github.com/Team254/cheesy-arena/game"
 	"github.com/Team254/cheesy-arena/model"
 	"github.com/Team254/cheesy-arena/websocket"
 	"github.com/mitchellh/mapstructure"
 )
 
-type MatchPlayListItem struct {
-	Id         int
-	ShortName  string
-	Time       string
-	Status     game.MatchStatus
-	ColorClass string
-}
-
-type MatchPlayList []MatchPlayListItem
+var testMatchCounter int
 
 // Shows the match play control interface.
 func (web *Web) matchPlayHandler(w http.ResponseWriter, r *http.Request) {
@@ -50,57 +40,6 @@ func (web *Web) matchPlayHandler(w http.ResponseWriter, r *http.Request) {
 		web.arena.Plc.GetArmorBlockStatuses(),
 	}
 	err = template.ExecuteTemplate(w, "base", data)
-	if err != nil {
-		handleWebErr(w, err)
-		return
-	}
-}
-
-// Renders a partial template containing the list of matches.
-func (web *Web) matchPlayMatchLoadHandler(w http.ResponseWriter, r *http.Request) {
-	if !web.userIsAdmin(w, r) {
-		return
-	}
-
-	practiceMatches, err := web.buildMatchPlayList(model.Practice)
-	if err != nil {
-		handleWebErr(w, err)
-		return
-	}
-	qualificationMatches, err := web.buildMatchPlayList(model.Qualification)
-	if err != nil {
-		handleWebErr(w, err)
-		return
-	}
-	playoffMatches, err := web.buildMatchPlayList(model.Playoff)
-	if err != nil {
-		handleWebErr(w, err)
-		return
-	}
-
-	matchesByType := map[model.MatchType]MatchPlayList{
-		model.Practice:      practiceMatches,
-		model.Qualification: qualificationMatches,
-		model.Playoff:       playoffMatches,
-	}
-	currentMatchType := web.arena.CurrentMatch.Type
-	if currentMatchType == model.Test {
-		currentMatchType = model.Practice
-	}
-
-	template, err := web.parseFiles("templates/match_play_match_load.html")
-	if err != nil {
-		handleWebErr(w, err)
-		return
-	}
-	data := struct {
-		MatchesByType    map[model.MatchType]MatchPlayList
-		CurrentMatchType model.MatchType
-	}{
-		matchesByType,
-		currentMatchType,
-	}
-	err = template.ExecuteTemplate(w, "match_play_match_load.html", data)
 	if err != nil {
 		handleWebErr(w, err)
 		return
@@ -142,33 +81,14 @@ func (web *Web) matchPlayWebsocketHandler(w http.ResponseWriter, r *http.Request
 
 		switch messageType {
 		case "loadMatch":
-			args := struct {
-				MatchId int
-			}{}
-			err = mapstructure.Decode(data, &args)
-			if err != nil {
-				ws.WriteError(err.Error())
-				continue
-			}
 			err = web.arena.ResetMatch()
 			if err != nil {
 				ws.WriteError(err.Error())
 				continue
 			}
-			if args.MatchId == 0 {
-				err = web.arena.LoadTestMatch()
-			} else {
-				match, err := web.arena.Database.GetMatchById(args.MatchId)
-				if err != nil {
-					ws.WriteError(err.Error())
-					continue
-				}
-				if match == nil {
-					ws.WriteError(fmt.Sprintf("invalid match ID %d", args.MatchId))
-					continue
-				}
-				err = web.arena.LoadMatch(match)
-			}
+			testMatchCounter++
+			log.Printf("Loading test match #%d", testMatchCounter)
+			err = web.arena.LoadTestMatch()
 			if err != nil {
 				ws.WriteError(err.Error())
 				continue
@@ -264,7 +184,9 @@ func (web *Web) matchPlayWebsocketHandler(w http.ResponseWriter, r *http.Request
 				ws.WriteError(err.Error())
 				continue
 			}
-			err = web.arena.LoadNextMatch(true)
+			testMatchCounter++
+			log.Printf("Loading test match #%d", testMatchCounter)
+			err = web.arena.LoadTestMatch()
 			if err != nil {
 				ws.WriteError(err.Error())
 				continue
@@ -275,7 +197,9 @@ func (web *Web) matchPlayWebsocketHandler(w http.ResponseWriter, r *http.Request
 				ws.WriteError(err.Error())
 				continue
 			}
-			err = web.arena.LoadNextMatch(false)
+			testMatchCounter++
+			log.Printf("Loading test match #%d", testMatchCounter)
+			err = web.arena.LoadTestMatch()
 			if err != nil {
 				ws.WriteError(err.Error())
 				continue
@@ -298,51 +222,3 @@ func (web *Web) matchPlayWebsocketHandler(w http.ResponseWriter, r *http.Request
 	}
 }
 
-// Helper function to implement the required interface for Sort.
-func (list MatchPlayList) Len() int {
-	return len(list)
-}
-
-// Helper function to implement the required interface for Sort.
-func (list MatchPlayList) Less(i, j int) bool {
-	return list[i].Status == game.MatchScheduled && list[j].Status != game.MatchScheduled
-}
-
-// Helper function to implement the required interface for Sort.
-func (list MatchPlayList) Swap(i, j int) {
-	list[i], list[j] = list[j], list[i]
-}
-
-// Constructs the list of matches to display on the side of the match play interface.
-func (web *Web) buildMatchPlayList(matchType model.MatchType) (MatchPlayList, error) {
-	matches, err := web.arena.Database.GetMatchesByType(matchType, false)
-	if err != nil {
-		return MatchPlayList{}, err
-	}
-
-	matchPlayList := make(MatchPlayList, len(matches))
-	for i, match := range matches {
-		matchPlayList[i].Id = match.Id
-		matchPlayList[i].ShortName = match.ShortName
-		matchPlayList[i].Time = match.Time.Local().Format("3:04 PM")
-		matchPlayList[i].Status = match.Status
-		switch match.Status {
-		case game.RedWonMatch:
-			matchPlayList[i].ColorClass = "red"
-		case game.BlueWonMatch:
-			matchPlayList[i].ColorClass = "blue"
-		case game.TieMatch:
-			matchPlayList[i].ColorClass = "yellow"
-		default:
-			matchPlayList[i].ColorClass = ""
-		}
-		if web.arena.CurrentMatch != nil && matchPlayList[i].Id == web.arena.CurrentMatch.Id {
-			matchPlayList[i].ColorClass = "green"
-		}
-	}
-
-	// Sort the list to put all completed matches at the bottom.
-	sort.Stable(matchPlayList)
-
-	return matchPlayList, nil
-}

@@ -172,11 +172,6 @@ const handleMatchLoad = function (data) {
     input.disabled = !data.AllowSubstitution;
   }
   document.getElementById("btnSubstitute").disabled = true;
-
-  // Refresh the match list sidebar.
-  fetch("/match_play/match_load")
-    .then(function (r) { return r.text(); })
-    .then(function (html) { document.getElementById("matchListColumn").innerHTML = html; });
 };
 
 const handleMatchTime = function (data) {
