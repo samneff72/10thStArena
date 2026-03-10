@@ -68,15 +68,10 @@ h3 {
   align-items: center;
   border-radius: 0.2vw;
 }
-.team-card[data-card="yellow"] {
-  background-color: #c90;
-}
 .team-card[data-card="red"] {
   background-color: #900;
 }
-.team-card[data-old-yellow-card="true"] {
-  border: 0.3vw solid #ff0;
-}
+
 #scoringStatuses {
   margin-top: 0.5vw;
 }

@@ -32,12 +32,10 @@ var deleteFoul = function (alliance, index) {
   websocket.send("deleteFoul", {Alliance: alliance, Index: index});
 };
 
-// Cycles through no card, yellow card, and red card.
+// Cycles through no card and red card.
 var cycleCard = function (cardButton) {
   var newCard = "";
   if ($(cardButton).attr("data-card") === "") {
-    newCard = "yellow";
-  } else if ($(cardButton).attr("data-card") === "yellow") {
     newCard = "red";
   }
   websocket.send(
@@ -171,11 +169,9 @@ const setTeamCard = function (alliance, position, team) {
   if (team === null) {
     cardButton.text(0);
     cardButton.attr("data-team", 0)
-    cardButton.attr("data-old-yellow-card", "");
   } else {
     cardButton.text(team.Id);
     cardButton.attr("data-team", team.Id)
-    cardButton.attr("data-old-yellow-card", team.YellowCard);
   }
   cardButton.attr("data-card", "");
 }

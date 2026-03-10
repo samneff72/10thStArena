@@ -73,15 +73,7 @@ html {
   font-size: 20px;
   line-height: 25px;
 }
-.teams div[data-yellow-card=true] {
-  width: 90%;
-  height: 32%;
-  border-radius: 0.2vw;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  background-color: #fc0;
-}
+
 #leftTeams {
   border-right: 1px solid #222;
 }
