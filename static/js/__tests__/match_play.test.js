@@ -51,8 +51,7 @@ function buildDom() {
     <span id="timerText"></span>
     <button id="btnStart" disabled></button>
     <button id="btnAbort" disabled></button>
-    <button id="btnCommit" disabled></button>
-    <button id="btnDiscard" disabled></button>
+    <button id="btnClear" disabled></button>
     <input type="checkbox" id="muteMatchSounds">
     <strong id="matchName"></strong>
     <span id="testMatchNameWrap" style="display:none"></span>
@@ -66,7 +65,7 @@ function buildDom() {
         <input type="number" id="team-${s}">
       </div>`
     ).join("")}
-    <button id="btnSubstitute" disabled></button>
+    <button id="btnRegister" disabled></button>
   `;
 }
 
@@ -167,27 +166,24 @@ describe("handleArenaStatus — Abort button", () => {
   });
 });
 
-// ---- Commit / Discard buttons -----------------------------------------------
+// ---- Clear Match button -----------------------------------------------
 
-describe("handleArenaStatus — Commit and Discard buttons", () => {
-  test("both disabled in PRE_MATCH", () => {
+describe("handleArenaStatus — Clear Match button", () => {
+  test("disabled in PRE_MATCH", () => {
     handleArenaStatus(makeStatus(0, false));
-    expect(document.getElementById("btnCommit").disabled).toBe(true);
-    expect(document.getElementById("btnDiscard").disabled).toBe(true);
+    expect(document.getElementById("btnClear").disabled).toBe(true);
   });
 
-  test("both disabled while match is in progress", () => {
+  test("disabled while match is in progress", () => {
     for (const state of [1, 2, 3, 4, 5]) {
       handleArenaStatus(makeStatus(state, false));
-      expect(document.getElementById("btnCommit").disabled).toBe(true);
-      expect(document.getElementById("btnDiscard").disabled).toBe(true);
+      expect(document.getElementById("btnClear").disabled).toBe(true);
     }
   });
 
-  test("both enabled in POST_MATCH", () => {
+  test("enabled in POST_MATCH", () => {
     handleArenaStatus(makeStatus(6, false));
-    expect(document.getElementById("btnCommit").disabled).toBe(false);
-    expect(document.getElementById("btnDiscard").disabled).toBe(false);
+    expect(document.getElementById("btnClear").disabled).toBe(false);
   });
 });
 

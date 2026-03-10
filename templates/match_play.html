@@ -36,8 +36,8 @@ Simplified match play UI for 10th Street practice field controller.
 
     <!-- Match controls -->
     <div class="mp-controls mb-2">
-      <button id="btnSubstitute" class="btn btn-secondary btn-mp" onclick="substituteTeams()" disabled>
-        Substitute
+      <button id="btnRegister" class="btn btn-secondary btn-mp" onclick="registerTeams()" disabled>
+        Register
       </button>
       <button id="btnStart" class="btn btn-success btn-mp" onclick="startMatch()" disabled>
         Start Match
@@ -45,11 +45,8 @@ Simplified match play UI for 10th Street practice field controller.
       <button id="btnAbort" class="btn btn-danger btn-mp" onclick="abortMatch()" disabled>
         Abort
       </button>
-      <button id="btnCommit" class="btn btn-primary btn-mp" onclick="commitResults()" disabled>
-        Commit &amp; Next
-      </button>
-      <button id="btnDiscard" class="btn btn-warning btn-mp" onclick="discardResults()" disabled>
-        Discard
+      <button id="btnClear" class="btn btn-warning btn-mp" onclick="clearMatch()" disabled>
+        Clear Match
       </button>
     </div>
 
@@ -72,7 +69,7 @@ Simplified match play UI for 10th Street practice field controller.
   <div class="mp-card-top">
     <span class="mp-card-label">{{.}}</span>
     <input type="number" class="mp-team-input" id="team-{{.}}" placeholder="—"
-      onchange="markSubstitution()">
+      onchange="markRegistration()">
     <span class="mp-card-ds" id="ds-{{.}}">—</span>
   </div>
   <div class="mp-card-bottom">

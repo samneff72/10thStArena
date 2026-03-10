@@ -86,20 +86,7 @@ func (web *Web) matchPlayWebsocketHandler(w http.ResponseWriter, r *http.Request
 		}
 
 		switch messageType {
-		case "loadMatch":
-			err = web.arena.ResetMatch()
-			if err != nil {
-				ws.WriteError(err.Error())
-				continue
-			}
-			testMatchCounter++
-			log.Printf("Loading test match #%d", testMatchCounter)
-			err = web.arena.LoadTestMatch()
-			if err != nil {
-				ws.WriteError(err.Error())
-				continue
-			}
-		case "substituteTeams":
+		case "registerTeams":
 			args := struct {
 				Red1  int
 				Red2  int
@@ -180,24 +167,11 @@ func (web *Web) matchPlayWebsocketHandler(w http.ResponseWriter, r *http.Request
 			if err = ws.WriteNotifier(web.arena.ArenaStatusNotifier); err != nil {
 				log.Println(err)
 			}
-		case "commitResults":
+		case "clearMatch":
 			if web.arena.MatchState != field.PostMatch {
-				ws.WriteError("cannot commit match while it is in progress")
+				ws.WriteError("cannot clear match while it is in progress")
 				continue
 			}
-			err = web.arena.ResetMatch()
-			if err != nil {
-				ws.WriteError(err.Error())
-				continue
-			}
-			testMatchCounter++
-			log.Printf("Loading test match #%d", testMatchCounter)
-			err = web.arena.LoadTestMatch()
-			if err != nil {
-				ws.WriteError(err.Error())
-				continue
-			}
-		case "discardResults":
 			err = web.arena.ResetMatch()
 			if err != nil {
 				ws.WriteError(err.Error())

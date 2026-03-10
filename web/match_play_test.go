@@ -82,12 +82,12 @@ func TestMatchPlayWebsocketCommands(t *testing.T) {
 	assert.Contains(t, readWebsocketError(t, ws), "Invalid message type")
 
 	// Test match setup commands.
-	ws.Write("substituteTeams", map[string]int{"Red1": 0, "Red2": 0, "Red3": 0, "Blue1": 1, "Blue2": 0, "Blue3": 0})
+	ws.Write("registerTeams", map[string]int{"Red1": 0, "Red2": 0, "Red3": 0, "Blue1": 1, "Blue2": 0, "Blue3": 0})
 	assert.Equal(t, readWebsocketError(t, ws), "Team 1 is not present at the event.")
-	ws.Write("substituteTeams", map[string]int{"Red1": 0, "Red2": 0, "Red3": 0, "Blue1": 254, "Blue2": 0, "Blue3": 0})
+	ws.Write("registerTeams", map[string]int{"Red1": 0, "Red2": 0, "Red3": 0, "Blue1": 254, "Blue2": 0, "Blue3": 0})
 	readWebsocketType(t, ws, "matchLoad")
 	assert.Equal(t, 254, web.arena.CurrentMatch.Blue1)
-	ws.Write("substituteTeams", map[string]int{"Red1": 0, "Red2": 0, "Red3": 0, "Blue1": 0, "Blue2": 0, "Blue3": 0})
+	ws.Write("registerTeams", map[string]int{"Red1": 0, "Red2": 0, "Red3": 0, "Blue1": 0, "Blue2": 0, "Blue3": 0})
 	readWebsocketType(t, ws, "matchLoad")
 	assert.Equal(t, 0, web.arena.CurrentMatch.Blue1)
 	ws.Write("toggleBypass", nil)
@@ -115,41 +115,16 @@ func TestMatchPlayWebsocketCommands(t *testing.T) {
 	ws.Write("startMatch", nil)
 	readWebsocketType(t, ws, "arenaStatus")
 	assert.Equal(t, field.StartMatch, web.arena.MatchState)
-	ws.Write("commitResults", nil)
-	assert.Contains(t, readWebsocketError(t, ws), "cannot commit match while it is in progress")
-	ws.Write("discardResults", nil)
-	assert.Contains(t, readWebsocketError(t, ws), "cannot reset match while it is in progress")
+	ws.Write("clearMatch", nil)
+	assert.Contains(t, readWebsocketError(t, ws), "cannot clear match while it is in progress")
 	ws.Write("abortMatch", nil)
 	readWebsocketType(t, ws, "arenaStatus")
 	assert.Equal(t, field.PostMatch, web.arena.MatchState)
-	ws.Write("commitResults", nil)
-	readWebsocketType(t, ws, "matchLoad")
-	assert.Equal(t, field.PreMatch, web.arena.MatchState)
-	ws.Write("discardResults", nil)
+	ws.Write("clearMatch", nil)
 	readWebsocketType(t, ws, "matchLoad")
 	assert.Equal(t, field.PreMatch, web.arena.MatchState)
 }
 
-func TestMatchPlayWebsocketLoadMatch(t *testing.T) {
-	web := setupTestWeb(t)
-
-	server, wsUrl := web.startTestServer()
-	defer server.Close()
-	conn, _, err := gorillawebsocket.DefaultDialer.Dial(wsUrl+"/match_play/websocket", nil)
-	assert.Nil(t, err)
-	defer conn.Close()
-	ws := websocket.NewTestWebsocket(conn)
-
-	// Should get a few status updates right after connection.
-	readWebsocketMultiple(t, ws, 4)
-
-	// loadMatch always loads a fresh test match regardless of any payload.
-	ws.Write("loadMatch", nil)
-	readWebsocketType(t, ws, "matchLoad")
-	assert.Equal(t, model.Test, web.arena.CurrentMatch.Type)
-	assert.Equal(t, 0, web.arena.CurrentMatch.Red1)
-	assert.Equal(t, 0, web.arena.CurrentMatch.Blue1)
-}
 
 func TestMatchPlayClearFieldEStop(t *testing.T) {
 	web := setupTestWeb(t)
@@ -310,7 +285,7 @@ func TestMatchPlayWebsocketStartMatchWithRegisteredTeamAndBypass(t *testing.T) {
 	readWebsocketMultiple(t, ws, 4)
 
 	// Place the registered team in R1.
-	ws.Write("substituteTeams", map[string]int{
+	ws.Write("registerTeams", map[string]int{
 		"Red1": 8033, "Red2": 0, "Red3": 0, "Blue1": 0, "Blue2": 0, "Blue3": 0,
 	})
 	readWebsocketType(t, ws, "matchLoad")

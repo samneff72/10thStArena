@@ -188,11 +188,14 @@ journalctl -u bioarena -f
 
 ### Running a practice match
 
+Match Play does not record scores or results — it is a pure practice tool. Each match is a standalone timed run.
+
 1. Open `http://10.0.100.5:8080` in a browser on any device on the field network.
 2. Go to **Setup > Teams** and enter the team numbers for each station.
 3. Go to **Match Play**.
-4. Wait for all Driver Stations to show green (DS Linked, Radio Linked, Robot Linked).
-5. Click **Start Match**.
+4. Type team numbers into the station fields and click **Register** to assign them, or check **BYP** to bypass empty stations.
+5. Wait for assigned stations to show a DS connection (or bypass them), then click **Start Match**.
+6. After the match ends, click **Clear Match** to reset and run another round.
 
 Match timing defaults (2026 REBUILT):
 

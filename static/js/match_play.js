@@ -26,11 +26,7 @@ const estopCancel = function (btn) {
 
 // --- Match control commands ---
 
-const loadMatch = function (matchId) {
-  websocket.send("loadMatch", {matchId: matchId});
-};
-
-const substituteTeams = function () {
+const registerTeams = function () {
   const teams = {
     Red1: getTeamNumber("R1"),
     Red2: getTeamNumber("R2"),
@@ -39,12 +35,12 @@ const substituteTeams = function () {
     Blue2: getTeamNumber("B2"),
     Blue3: getTeamNumber("B3"),
   };
-  websocket.send("substituteTeams", teams);
-  document.getElementById("btnSubstitute").disabled = true;
+  websocket.send("registerTeams", teams);
+  document.getElementById("btnRegister").disabled = true;
 };
 
-const markSubstitution = function () {
-  document.getElementById("btnSubstitute").disabled = false;
+const markRegistration = function () {
+  document.getElementById("btnRegister").disabled = false;
 };
 
 const toggleBypass = function (station) {
@@ -66,14 +62,8 @@ const abortMatch = function () {
   websocket.send("abortMatch");
 };
 
-const commitResults = function () {
-  websocket.send("commitResults");
-};
-
-const discardResults = function () {
-  if (confirm("Discard match results and load next match?")) {
-    websocket.send("discardResults");
-  }
+const clearMatch = function () {
+  websocket.send("clearMatch");
 };
 
 const setTestMatchName = function () {
@@ -124,15 +114,13 @@ const handleArenaStatus = function (data) {
   // Update control button states.
   const btnStart = document.getElementById("btnStart");
   const btnAbort = document.getElementById("btnAbort");
-  const btnCommit = document.getElementById("btnCommit");
-  const btnDiscard = document.getElementById("btnDiscard");
+  const btnClear = document.getElementById("btnClear");
 
   switch (matchStates[data.MatchState]) {
     case "PRE_MATCH":
       btnStart.disabled = !data.CanStartMatch;
       btnAbort.disabled = true;
-      btnCommit.disabled = true;
-      btnDiscard.disabled = true;
+      btnClear.disabled = true;
       break;
     case "START_MATCH":
     case "WARMUP_PERIOD":
@@ -141,21 +129,18 @@ const handleArenaStatus = function (data) {
     case "TELEOP_PERIOD":
       btnStart.disabled = true;
       btnAbort.disabled = false;
-      btnCommit.disabled = true;
-      btnDiscard.disabled = true;
+      btnClear.disabled = true;
       break;
     case "POST_MATCH":
       btnStart.disabled = true;
       btnAbort.disabled = true;
-      btnCommit.disabled = false;
-      btnDiscard.disabled = false;
+      btnClear.disabled = false;
       break;
     default:
       // FREE_PRACTICE or unknown.
       btnStart.disabled = true;
       btnAbort.disabled = true;
-      btnCommit.disabled = true;
-      btnDiscard.disabled = true;
+      btnClear.disabled = true;
   }
 };
 
@@ -171,7 +156,7 @@ const handleMatchLoad = function (data) {
     input.value = team ? team.Id : "";
     input.disabled = !data.AllowSubstitution;
   }
-  document.getElementById("btnSubstitute").disabled = true;
+  document.getElementById("btnRegister").disabled = true;
 };
 
 const handleMatchTime = function (data) {
@@ -213,5 +198,5 @@ $(function () {
 });
 
 if (typeof module !== "undefined") {
-  module.exports = { handleArenaStatus, handleMatchLoad, handleMatchTime };
+  module.exports = { handleArenaStatus, handleMatchLoad, handleMatchTime, registerTeams, clearMatch };
 }
