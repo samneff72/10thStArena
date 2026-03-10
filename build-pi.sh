@@ -6,12 +6,13 @@
 # OS image for most Pi 4 installations.  If your Pi runs the 64-bit image
 # (uname -m returns aarch64) change GOARCH to arm64 and remove GOARM.
 #
-# Output: bioarena  (single static binary, copy to the Pi and run)
+# Output: bioarena-pi  estop-panel-pi  (Linux/ARM binaries, copy to the Pi)
+# Note: outputs use a "-pi" suffix so they never shadow a local Windows build.
 
 set -euo pipefail
 
-OUTPUT="bioarena"
-PANEL_OUTPUT="estop-panel"
+OUTPUT="bioarena-pi"
+PANEL_OUTPUT="estop-panel-pi"
 
 echo "Building bioarena for linux/arm (armv7 / 32-bit Raspberry Pi OS)..."
 GOOS=linux GOARCH=arm GOARM=7 go build -o "$OUTPUT" .
@@ -23,11 +24,11 @@ echo "Done: $OUTPUT  $PANEL_OUTPUT"
 echo ""
 echo "Deploy steps — main field controller Pi:"
 echo "  1. Copy the binary and static assets to the Pi:"
-echo "       scp $OUTPUT pi@<PI_IP>:~/bioarena/"
+echo "       scp $OUTPUT pi@<PI_IP>:~/bioarena/bioarena"
 echo "       scp -r static templates font schedules audio pi@<PI_IP>:~/bioarena/"
 echo ""
 echo "  2. On the Pi, make the binary executable:"
-echo "       chmod +x ~/bioarena/$OUTPUT"
+echo "       chmod +x ~/bioarena/bioarena"
 echo ""
 echo "  3. Install the systemd service so it starts on boot:"
 echo "       scp bioarena.service pi@<PI_IP>:~/"
@@ -41,11 +42,11 @@ echo "  4. Access the web UI at http://<PI_IP>:8080"
 echo ""
 echo "Deploy steps — e-stop panel Pi (repeat for red and blue):"
 echo "  1. Copy the panel binary and config to the panel Pi:"
-echo "       scp $PANEL_OUTPUT pi@<PANEL_PI_IP>:~/estop-panel/"
+echo "       scp $PANEL_OUTPUT pi@<PANEL_PI_IP>:~/estop-panel/estop-panel"
 echo "       scp estop-panel.yaml pi@<PANEL_PI_IP>:~/estop-panel/"
 echo ""
 echo "  2. Make it executable:"
-echo "       chmod +x ~/estop-panel/$PANEL_OUTPUT"
+echo "       chmod +x ~/estop-panel/estop-panel"
 echo ""
 echo "  3. Install the systemd service (edit IP in service file first):"
 echo "       scp cmd/estop-panel/estop-panel.service pi@<PANEL_PI_IP>:~/"
