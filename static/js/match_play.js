@@ -211,3 +211,7 @@ $(function () {
     matchTiming: function (event) { handleMatchTiming(event.data); },
   });
 });
+
+if (typeof module !== "undefined") {
+  module.exports = { handleArenaStatus, handleMatchLoad, handleMatchTime };
+}
