@@ -929,7 +929,7 @@ func (arena *Arena) EnterFreePractice() error {
 // briefly enabled-but-disconnected during the transition.
 func (arena *Arena) ExitFreePractice() error {
 	if arena.MatchState != FreePractice {
-		return fmt.Errorf("not in free practice mode")
+		return fmt.Errorf("not in free practice mode (state=%d)", arena.MatchState)
 	}
 
 	arena.freePracticeReconfigMu.Lock()
@@ -969,7 +969,7 @@ func (arena *Arena) ExitFreePractice() error {
 // If AP reconfiguration fails the slot assignment is rolled back.
 func (arena *Arena) SetFreePracticeSlot(station string, teamId int, wpaKey string) error {
 	if arena.MatchState != FreePractice && arena.MatchState != PreMatch {
-		return fmt.Errorf("not in free practice mode")
+		return fmt.Errorf("not in free practice mode (state=%d)", arena.MatchState)
 	}
 	if _, ok := arena.AllianceStations[station]; !ok {
 		return fmt.Errorf("invalid alliance station %q", station)
@@ -1028,7 +1028,7 @@ func (arena *Arena) SetFreePracticeSlot(station string, teamId int, wpaKey strin
 // Triggers a brief AP reconfiguration pause otherwise.
 func (arena *Arena) ClearFreePracticeSlot(station string) error {
 	if arena.MatchState != FreePractice && arena.MatchState != PreMatch {
-		return fmt.Errorf("not in free practice mode")
+		return fmt.Errorf("not in free practice mode (state=%d)", arena.MatchState)
 	}
 	if _, ok := arena.AllianceStations[station]; !ok {
 		return fmt.Errorf("invalid alliance station %q", station)
