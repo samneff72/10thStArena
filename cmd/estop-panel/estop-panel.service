@@ -1,0 +1,21 @@
+[Unit]
+Description=FRC E-Stop Panel Pi service
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/estop-panel
+# Set a static IP for this panel Pi.
+# Red panel:  10.0.100.11/24
+# Blue panel: 10.0.100.12/24
+# Edit the address below before deploying.
+ExecStartPre=/sbin/ip addr add 10.0.100.11/24 dev eth0
+ExecStart=/home/pi/estop-panel/estop-panel
+Restart=on-failure
+RestartSec=5s
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

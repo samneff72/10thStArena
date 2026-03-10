@@ -168,6 +168,14 @@ func (arena *Arena) LoadSettings() error {
 		arena.FieldEStop = &hardware.NoopFieldEStopPanel{}
 	}
 
+	arena.EStopPanels = nil
+	if addr := settings.RedEStopPanelAddress; addr != "" {
+		arena.EStopPanels = append(arena.EStopPanels, hardware.NewNetworkEStopPanel(addr))
+	}
+	if addr := settings.BlueEStopPanelAddress; addr != "" {
+		arena.EStopPanels = append(arena.EStopPanels, hardware.NewNetworkEStopPanel(addr))
+	}
+
 	game.MatchTiming.WarmupDurationSec = settings.WarmupDurationSec
 	game.MatchTiming.AutoDurationSec = settings.AutoDurationSec
 	game.MatchTiming.PauseDurationSec = settings.PauseDurationSec

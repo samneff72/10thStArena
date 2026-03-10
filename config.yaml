@@ -26,3 +26,11 @@ field_lights_driver: none
 # field_lights_port: /dev/ttyACM0
 # field_lights_baud: 9600
 # field_lights_command: "START\n"
+
+# E-stop panel Pis (one per alliance).
+# Set host to the panel Pi's address and port, e.g. "http://10.0.100.11:8765"
+# Leave host empty ("") to skip polling that alliance's panel.
+# red_estop_panel:
+#   host: ""
+# blue_estop_panel:
+#   host: ""

@@ -25,10 +25,9 @@ import (
 const eventDbPath = "./event.db"
 const configPath = "./config.yaml"
 
-// EStopPanelConfig holds connection info for a hardware e-stop panel (Phase 4).
+// EStopPanelConfig holds connection info for a hardware e-stop panel Pi.
 type EStopPanelConfig struct {
-	Driver string `yaml:"driver"`
-	Host   string `yaml:"host"`
+	Host string `yaml:"host"`
 }
 
 // Config is the in-memory representation of config.yaml.
@@ -80,7 +79,6 @@ func loadConfig(path string) (*Config, error) {
 }
 
 // buildFieldLights constructs the FieldLights driver from config.
-// An empty driver string returns a no-op implementation.
 func buildFieldLights(cfg *Config) hardware.FieldLights {
 	switch cfg.FieldLightsDriver {
 	case "", "none":
@@ -101,19 +99,6 @@ func buildFieldLights(cfg *Config) hardware.FieldLights {
 		return sl
 	default:
 		log.Fatalf("unknown field_lights_driver: %q", cfg.FieldLightsDriver)
-		return nil
-	}
-}
-
-// buildEStopPanel constructs an EStopPanel driver from config.
-// An empty driver string returns a no-op implementation.
-func buildEStopPanel(cfg EStopPanelConfig, alliance string) hardware.EStopPanel {
-	switch cfg.Driver {
-	case "":
-		log.Printf("WARNING: No %s e-stop panel configured — %s e-stops not monitored.", alliance, alliance)
-		return &hardware.NoopEStopPanel{}
-	default:
-		log.Fatalf("unknown estop_panel driver: %q", cfg.Driver)
 		return nil
 	}
 }
@@ -140,13 +125,15 @@ func main() {
 		log.Println("Admin password set to default: bioarena  (change via Settings page)")
 	}
 
-	// Apply timing and network config from config.yaml, seeding the DB on every
-	// startup so that config.yaml is the authoritative source for these values.
+	// Apply timing, network, and hardware config from config.yaml, seeding the DB
+	// on every startup so that config.yaml is the authoritative source.
 	arena.EventSettings.AutoDurationSec = cfg.AutoDurationSec
 	arena.EventSettings.PauseDurationSec = cfg.PauseDurationSec
 	arena.EventSettings.TeleopDurationSec = cfg.TeleopDurationSec
 	arena.EventSettings.WarningRemainingDurationSec = cfg.WarningRemainingDurationSec
 	arena.EventSettings.NetworkSecurityEnabled = cfg.NetworkSecurityEnabled
+	arena.EventSettings.RedEStopPanelAddress = cfg.RedEStopPanel.Host
+	arena.EventSettings.BlueEStopPanelAddress = cfg.BlueEStopPanel.Host
 	if err = arena.Database.UpdateEventSettings(arena.EventSettings); err != nil {
 		log.Fatalln("Error saving config to DB:", err)
 	}
@@ -155,10 +142,6 @@ func main() {
 	}
 
 	arena.FieldLights = buildFieldLights(cfg)
-	arena.EStopPanels = []hardware.EStopPanel{
-		buildEStopPanel(cfg.RedEStopPanel, "red"),
-		buildEStopPanel(cfg.BlueEStopPanel, "blue"),
-	}
 
 	// On SIGTERM/SIGINT: disable all robots and wait one DS packet cycle before exiting
 	// so connected driver stations receive a clean disabled packet.

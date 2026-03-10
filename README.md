@@ -248,17 +248,63 @@ Set `field_lights_driver: "gpio"` in your build configuration to activate.
 
 **E-stop panel**
 
-Implement the `EStopPanel` interface to read physical emergency stop buttons:
+Each alliance can have a dedicated Raspberry Pi wired to 7 GPIO inputs:
 
-```go
-type EStopPanel interface {
-    EStopPressed() bool
-}
+| Pin role           | Station              |
+|--------------------|----------------------|
+| station1_estop     | R1 or B1 (e-stop)    |
+| station1_astop     | R1 or B1 (a-stop)    |
+| station2_estop     | R2 or B2 (e-stop)    |
+| station2_astop     | R2 or B2 (a-stop)    |
+| station3_estop     | R3 or B3 (e-stop)    |
+| station3_astop     | R3 or B3 (a-stop)    |
+| field_estop        | all stations (e-stop) |
+
+Wiring: NC (normally-closed) contacts between each GPIO pin and GND. Internal pull-up enabled; pin reads LOW (0) when the button is pressed (active-low). Buttons self-latch in hardware; the panel reports current pin state on every poll.
+
+Recommended static IPs: `10.0.100.11` (red panel), `10.0.100.12` (blue panel).
+
+Create `estop-panel.yaml` in the panel Pi's working directory:
+
+```yaml
+alliance: "red"       # "red" or "blue"
+http_port: 8765
+gpio_chip: "gpiochip0"
+pins:
+  station1_estop: 17  # BCM GPIO; 0 = not wired, skipped
+  station1_astop: 27
+  station2_estop: 22
+  station2_astop: 23
+  station3_estop: 24
+  station3_astop: 25
+  field_estop: 5
 ```
 
-Set `estop_panel_driver: "gpio"` in your build configuration to activate.
+Build and deploy:
 
-Both drivers default to no-op stubs. The field runs normally without them.
+```bash
+./build-pi.sh          # produces estop-panel binary alongside bioarena
+scp estop-panel pi@10.0.100.11:~/estop-panel/
+scp estop-panel.yaml   pi@10.0.100.11:~/estop-panel/
+# Edit ExecStartPre IP in estop-panel.service, then:
+scp cmd/estop-panel/estop-panel.service pi@10.0.100.11:~/
+# On the panel Pi:
+sudo mv ~/estop-panel.service /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now estop-panel
+```
+
+Wire the main bioarena to the panel by adding to `config.yaml` and restarting:
+
+```yaml
+red_estop_panel:
+  host: "http://10.0.100.11:8765"
+blue_estop_panel:
+  host: "http://10.0.100.12:8765"
+```
+
+Panel addresses can also be changed live via **Setup > Settings** without a restart.
+
+The field runs normally without panel Pis; missing panels log a warning and return no stops.
 
 ## Development
 
