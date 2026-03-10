@@ -373,6 +373,34 @@ func (arena *Arena) ResetMatch() error {
 	return nil
 }
 
+// ClearMatch resets to a new test match while preserving the current team station
+// assignments so teams do not need to re-register between practice rounds.
+func (arena *Arena) ClearMatch() error {
+	if arena.MatchState != PostMatch {
+		return fmt.Errorf("cannot clear match while it is in progress")
+	}
+	red1 := arena.CurrentMatch.Red1
+	red2 := arena.CurrentMatch.Red2
+	red3 := arena.CurrentMatch.Red3
+	blue1 := arena.CurrentMatch.Blue1
+	blue2 := arena.CurrentMatch.Blue2
+	blue3 := arena.CurrentMatch.Blue3
+	if err := arena.ResetMatch(); err != nil {
+		return err
+	}
+	return arena.LoadMatch(&model.Match{
+		Type:      model.Test,
+		ShortName: "T",
+		LongName:  "Test Match",
+		Red1:      red1,
+		Red2:      red2,
+		Red3:      red3,
+		Blue1:     blue1,
+		Blue2:     blue2,
+		Blue3:     blue3,
+	})
+}
+
 // DisableAll sets Bypass on every alliance station so the next DS packet disables
 // all robots. Safe to call from any goroutine (atomic write). Intended for use
 // during graceful shutdown (SIGTERM).

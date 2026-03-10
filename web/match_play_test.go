@@ -125,6 +125,46 @@ func TestMatchPlayWebsocketCommands(t *testing.T) {
 	assert.Equal(t, field.PreMatch, web.arena.MatchState)
 }
 
+func TestMatchPlayWebsocketClearMatchPreservesTeams(t *testing.T) {
+	web := setupTestWeb(t)
+	web.arena.Database.CreateTeam(&model.Team{Id: 254})
+	web.arena.Database.CreateTeam(&model.Team{Id: 1114})
+
+	server, wsUrl := web.startTestServer()
+	defer server.Close()
+	conn, _, err := gorillawebsocket.DefaultDialer.Dial(wsUrl+"/match_play/websocket", nil)
+	assert.Nil(t, err)
+	defer conn.Close()
+	ws := websocket.NewTestWebsocket(conn)
+	readWebsocketMultiple(t, ws, 4)
+
+	// Register two teams.
+	ws.Write("registerTeams", map[string]int{
+		"Red1": 254, "Red2": 0, "Red3": 0, "Blue1": 1114, "Blue2": 0, "Blue3": 0,
+	})
+	readWebsocketType(t, ws, "matchLoad")
+
+	// Run a match and abort it to reach PostMatch.
+	for _, station := range []string{"R1", "R2", "R3", "B1", "B2", "B3"} {
+		web.arena.AllianceStations[station].Bypass.Store(true)
+	}
+	ws.Write("startMatch", nil)
+	readWebsocketType(t, ws, "arenaStatus")
+	ws.Write("abortMatch", nil)
+	readWebsocketType(t, ws, "arenaStatus")
+	assert.Equal(t, field.PostMatch, web.arena.MatchState)
+
+	// Clear — team assignments must survive.
+	ws.Write("clearMatch", nil)
+	readWebsocketType(t, ws, "matchLoad")
+	assert.Equal(t, field.PreMatch, web.arena.MatchState)
+	assert.Equal(t, 254, web.arena.CurrentMatch.Red1)
+	assert.Equal(t, 1114, web.arena.CurrentMatch.Blue1)
+	assert.NotNil(t, web.arena.AllianceStations["R1"].Team)
+	assert.Equal(t, 254, web.arena.AllianceStations["R1"].Team.Id)
+	assert.NotNil(t, web.arena.AllianceStations["B1"].Team)
+	assert.Equal(t, 1114, web.arena.AllianceStations["B1"].Team.Id)
+}
 
 func TestMatchPlayClearFieldEStop(t *testing.T) {
 	web := setupTestWeb(t)

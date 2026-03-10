@@ -168,22 +168,13 @@ func (web *Web) matchPlayWebsocketHandler(w http.ResponseWriter, r *http.Request
 				log.Println(err)
 			}
 		case "clearMatch":
-			if web.arena.MatchState != field.PostMatch {
-				ws.WriteError("cannot clear match while it is in progress")
-				continue
-			}
-			err = web.arena.ResetMatch()
+			err = web.arena.ClearMatch()
 			if err != nil {
 				ws.WriteError(err.Error())
 				continue
 			}
 			testMatchCounter++
 			log.Printf("Loading test match #%d", testMatchCounter)
-			err = web.arena.LoadTestMatch()
-			if err != nil {
-				ws.WriteError(err.Error())
-				continue
-			}
 		case "setTestMatchName":
 			if web.arena.CurrentMatch.Type != model.Test {
 				// Don't allow changing the name of a non-test match.
