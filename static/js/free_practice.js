@@ -36,6 +36,10 @@ const toggleEStop = function (station) {
   websocket.send("toggleEStop", station);
 };
 
+const clearFieldEStop = function () {
+  websocket.send("clearFieldEStop", null);
+};
+
 // -- Arena status handler --
 
 const handleArenaStatus = function (data) {
@@ -61,6 +65,16 @@ const handleArenaStatus = function (data) {
 
   // Reconfiguring overlay.
   $("#reconfiguringOverlay").toggleClass("d-none", !data.FreePracticeReconfiguring);
+
+  // Field e-stop overlay (mirrors match_play behavior).
+  document.getElementById("fieldEstopOverlay").style.display =
+    data.GpioFieldEStopActive ? "flex" : "none";
+
+  // Hardware status badges.
+  document.getElementById("apStatus").dataset.status = data.AccessPointStatus || "";
+  document.getElementById("swStatus").dataset.status = data.SwitchStatus || "";
+  document.getElementById("hwEStopStatus").dataset.statusOk =
+    String(!(data.GpioFieldEStopActive || data.FieldEStop));
 
   const stations = ["R1", "R2", "R3", "B1", "B2", "B3"];
   stations.forEach(function (s) {
@@ -158,7 +172,7 @@ $(function () {
 
 // Export for Jest unit tests. No-op in the browser (module is undefined).
 if (typeof module !== "undefined") {
-  module.exports = { handleArenaStatus };
+  module.exports = { handleArenaStatus, clearFieldEStop };
 }
 
 // -- Team-not-in-DB modal --

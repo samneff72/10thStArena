@@ -33,6 +33,21 @@ drive indefinitely without timers. Per-station E-stops remain functional.
   Reconfiguring network&hellip; Please wait.
 </div>
 
+<div class="mp-status mb-2">
+  <span class="badge badge-status" id="apStatus" data-status="">AP</span>
+  <span class="badge badge-status" id="swStatus" data-status="">SW</span>
+  <span class="badge badge-status" id="hwEStopStatus" data-status-ok="">FIELD E-STOP</span>
+</div>
+
+<!-- Field E-Stop overlay: covers the entire UI when a hardware e-stop is active. -->
+<div id="fieldEstopOverlay" class="field-estop-overlay" style="display:none">
+  <div class="field-estop-box">
+    <div class="field-estop-title">&#x26D4; FIELD E-STOP ACTIVE</div>
+    <div class="field-estop-sub">All robots disabled. Address the condition, then clear.</div>
+    <button class="field-estop-clear-btn" onclick="clearFieldEStop()">Clear Field E-Stop</button>
+  </div>
+</div>
+
 <div id="fpModeBanner" class="fp-mode-banner fp-mode-setup d-flex justify-content-between align-items-center mb-3 p-3">
   <div id="fpModeLabel" class="fp-mode-label">FREE PRACTICE SETUP</div>
   <div>

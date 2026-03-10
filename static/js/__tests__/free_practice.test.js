@@ -27,6 +27,10 @@ function buildDom() {
     <button id="enterBtn"></button>
     <button id="exitBtn" class="d-none"></button>
     <div id="reconfiguringOverlay" class="d-none"></div>
+    <span id="apStatus" data-status=""></span>
+    <span id="swStatus" data-status=""></span>
+    <span id="hwEStopStatus" data-status-ok=""></span>
+    <div id="fieldEstopOverlay" style="display:none"></div>
     <a id="matchPlayBtn" href="/match_play" class="btn btn-secondary">Match Play</a>
     ${STATIONS.map(
       (s) => `

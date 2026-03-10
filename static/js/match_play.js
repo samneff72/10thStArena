@@ -111,6 +111,12 @@ const handleArenaStatus = function (data) {
   document.getElementById("fieldEstopOverlay").style.display =
     data.GpioFieldEStopActive ? "flex" : "none";
 
+  // Hardware status badges.
+  document.getElementById("apStatus").dataset.status = data.AccessPointStatus || "";
+  document.getElementById("swStatus").dataset.status = data.SwitchStatus || "";
+  document.getElementById("hwEStopStatus").dataset.statusOk =
+    String(!(data.GpioFieldEStopActive || data.FieldEStop));
+
   // Update control button states.
   const btnStart = document.getElementById("btnStart");
   const btnAbort = document.getElementById("btnAbort");

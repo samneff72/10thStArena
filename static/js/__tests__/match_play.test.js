@@ -46,6 +46,9 @@ const STATIONS = ["R1", "R2", "R3", "B1", "B2", "B3"];
 function buildDom() {
   document.body.innerHTML = `
     <div id="fieldEstopOverlay" style="display:none"></div>
+    <span id="apStatus" data-status=""></span>
+    <span id="swStatus" data-status=""></span>
+    <span id="hwEStopStatus" data-status-ok=""></span>
     <div id="timerBand"></div>
     <span id="periodText"></span>
     <span id="timerText"></span>

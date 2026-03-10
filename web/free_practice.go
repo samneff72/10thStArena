@@ -135,6 +135,12 @@ func (web *Web) freePracticeWebsocketHandler(w http.ResponseWriter, r *http.Requ
 				log.Println(err)
 			}
 
+		case "clearFieldEStop":
+			web.arena.ClearFieldEStop()
+			if err = ws.WriteNotifier(web.arena.ArenaStatusNotifier); err != nil {
+				log.Println(err)
+			}
+
 		default:
 			ws.WriteError(fmt.Sprintf("Invalid message type '%s'.", messageType))
 		}
