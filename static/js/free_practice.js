@@ -25,6 +25,10 @@ const setSlot = function (station) {
 };
 
 const clearSlot = function (station) {
+  // Clear inputs immediately so clicking Clear always resets the fields,
+  // even if the slot was never registered (so arena status never fires a clear).
+  $("#teamId-" + station).val("").data("arenaSet", false);
+  $("#wpaKey-" + station).val("").data("arenaSet", false);
   websocket.send("clearSlot", station);
 };
 
@@ -72,18 +76,25 @@ const handleArenaStatus = function (data) {
       }
       // Populate the input fields so the operator can see the current registration.
       if (!$("#teamId-" + s).is(":focus")) {
-        $("#teamId-" + s).val(as.Team.Id);
+        $("#teamId-" + s).val(as.Team.Id).data("arenaSet", true);
       }
       if (!$("#wpaKey-" + s).is(":focus")) {
-        $("#wpaKey-" + s).val(as.Team.WpaKey || "");
+        $("#wpaKey-" + s).val(as.Team.WpaKey || "").data("arenaSet", true);
       }
     } else {
       slotCard.removeClass("border-danger");
+      // Only clear inputs that arena status itself previously wrote.
+      // If the operator has typed a value that hasn't been registered yet,
+      // leave it alone so it isn't wiped by the next status push.
       if (!$("#teamId-" + s).is(":focus")) {
-        $("#teamId-" + s).val("");
+        if ($("#teamId-" + s).data("arenaSet") || !$("#teamId-" + s).val()) {
+          $("#teamId-" + s).val("").data("arenaSet", false);
+        }
       }
       if (!$("#wpaKey-" + s).is(":focus")) {
-        $("#wpaKey-" + s).val("");
+        if ($("#wpaKey-" + s).data("arenaSet") || !$("#wpaKey-" + s).val()) {
+          $("#wpaKey-" + s).val("").data("arenaSet", false);
+        }
       }
     }
     statusEl.text(statusText);
@@ -126,6 +137,11 @@ $(function () {
       .catch(() => {});
   });
 });
+
+// Export for Jest unit tests. No-op in the browser (module is undefined).
+if (typeof module !== "undefined") {
+  module.exports = { handleArenaStatus };
+}
 
 // -- Team-not-in-DB modal --
 
