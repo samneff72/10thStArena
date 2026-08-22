@@ -858,9 +858,17 @@ same layout, same sequences — a different packet on UDP 6454. Most DMX gateway
 have a protocol setting of their own; make sure the two agree, because a node listening for
 the wrong one simply stays dark.
 
-One difference to watch: **Art-Net numbers universes from zero, sACN from one.** Universe 1
-in Settings is what an Art-Net node calls universe 0. Bioarena does that conversion, so
-enter the sACN-style number either way and expect the node to display one less.
+**Everything stays on universe 1.** Both layouts put every fixture there — sixteen fixtures
+at 24 channels each is 384 of the available 512, so a full field never needs a second — and
+the universe number is sent unchanged in both protocols. So the gateway is set to universe 1
+regardless of what it is speaking, and the instructions do not branch.
+
+The Art-Net specification numbers universes from zero, so this is universe 1 of that scheme
+rather than the first one. Gateways almost always label them from one in their own
+interface, which is the number you are setting.
+
+Split across universes only if a layout ever outgrows 512 channels: change the numbers in
+Settings, and the controller sends one packet per universe.
 
 ## Development
 

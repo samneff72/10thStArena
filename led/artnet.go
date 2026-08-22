@@ -129,14 +129,16 @@ func createBlankArtNetPacket() []byte {
 
 // sendArtNetPacket writes one universe.
 //
-// Art-Net numbers universes from 0 where sACN numbers them from 1, so the configured
-// universe is shifted down by one: universe 1 in Settings is what a node displays as
-// Art-Net universe 0. Getting this wrong is silent -- the node receives packets addressed
-// to a universe it is not listening on and shows nothing.
+// The configured number goes on the wire unchanged, so a gateway is set to universe 1
+// whichever protocol it is speaking and the install instructions do not have to branch.
+//
+// The Art-Net specification numbers universes from 0 and sACN from 1, so this addresses
+// what the specification calls universe 1 rather than 0. That matches how gateways label
+// their universes in practice, and a field that only ever uses one number cannot get the
+// off-by-one wrong in either direction.
 func (artNet *ArtNetController) sendArtNetPacket(dmxUniverse int, universe *universe) error {
-	artNetUniverse := dmxUniverse - 1
-	if artNetUniverse < 0 {
-		return fmt.Errorf("invalid universe %d: Art-Net universes start at 1 in settings", dmxUniverse)
+	if dmxUniverse < 1 {
+		return fmt.Errorf("invalid universe %d: universes start at 1", dmxUniverse)
 	}
 
 	universe.sequence++
@@ -147,8 +149,8 @@ func (artNet *ArtNetController) sendArtNetPacket(dmxUniverse int, universe *univ
 	artNet.packet[12] = universe.sequence
 
 	// Low byte is sub-universe and universe; high byte is net.
-	artNet.packet[14] = byte(artNetUniverse & 0xff)
-	artNet.packet[15] = byte(artNetUniverse >> 8 & 0x7f)
+	artNet.packet[14] = byte(dmxUniverse & 0xff)
+	artNet.packet[15] = byte(dmxUniverse >> 8 & 0x7f)
 
 	copy(artNet.packet[artNetHeaderBytes:], universe.currentData[:])
 

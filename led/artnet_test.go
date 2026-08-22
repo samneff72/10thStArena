@@ -68,9 +68,9 @@ func TestArtNetPacketHeader(t *testing.T) {
 	assert.Equal(t, byte(0x00), packet[17])
 }
 
-// Art-Net numbers universes from zero where sACN numbers them from one, so a node shows
-// the configured universe minus one. Getting this wrong is silent: the node receives
-// packets addressed to a universe it is not listening on.
+// The configured number goes on the wire unchanged, so a gateway is set to universe 1
+// whichever protocol it speaks. Anything else is silent when wrong: the node receives
+// packets addressed to a universe it is not listening on and shows nothing.
 func TestArtNetUniverseNumbering(t *testing.T) {
 	conn, controller := listen(t)
 	controller.packet = createBlankArtNetPacket()
@@ -79,10 +79,10 @@ func TestArtNetUniverseNumbering(t *testing.T) {
 		configured int
 		low, high  byte
 	}{
-		{1, 0, 0},
-		{2, 1, 0},
-		{256, 255, 0},
-		{257, 0, 1},
+		{1, 1, 0},
+		{2, 2, 0},
+		{255, 255, 0},
+		{256, 0, 1},
 	} {
 		assert.Nil(t, controller.sendArtNetPacket(testCase.configured, &universe{}))
 		received := make([]byte, 600)
@@ -95,8 +95,7 @@ func TestArtNetUniverseNumbering(t *testing.T) {
 	}
 }
 
-// Universe 0 has no Art-Net equivalent below it, and silently sending it as 65535 would be
-// worse than refusing.
+// Universes start at 1, and sending 0 as 65535 would be worse than refusing.
 func TestArtNetRejectsUniverseZero(t *testing.T) {
 	controller := NewArtNetController()
 	controller.packet = createBlankArtNetPacket()
