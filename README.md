@@ -847,6 +847,21 @@ Panel addresses can also be changed live via **Setup > Settings** without a rest
 
 The field runs normally without panel Pis; missing panels log a warning and return no stops.
 
+### Hub LED output
+
+Bioarena drives the hub lights over **E1.31 sACN** by default: unicast UDP to the address in
+**Arena → Settings → LEDs**, port 5568, 24 consecutive DMX channels per fixture (8 pixels ×
+3), with the universe and start channel set per alliance.
+
+**Tick "Send Art-Net instead of sACN"** for a node that speaks only Art-Net. Same pixels,
+same layout, same sequences — a different packet on UDP 6454. Most DMX gateways do both and
+have a protocol setting of their own; make sure the two agree, because a node listening for
+the wrong one simply stays dark.
+
+One difference to watch: **Art-Net numbers universes from zero, sACN from one.** Universe 1
+in Settings is what an Art-Net node calls universe 0. Bioarena does that conversion, so
+enter the sACN-style number either way and expect the node to display one less.
+
 ## Development
 
 Go 1.23+ — see `go.mod`.

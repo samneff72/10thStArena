@@ -18,31 +18,31 @@ const (
 )
 
 type EventSettings struct {
-	Id                               int `db:"id"`
-	Name                             string
-	PlayoffType                      PlayoffType
-	NumPlayoffAlliances              int
-	SelectionRound2Order             string
-	SelectionRound3Order             string
-	SelectionShowUnpickedTeams       bool
-	TbaDownloadEnabled               bool
-	TbaPublishingEnabled             bool
-	TbaEventCode                     string
-	TbaSecretId                      string
-	TbaSecret                        string
-	NexusEnabled                     bool
-	NetworkSecurityEnabled           bool
-	ApAddress                        string
-	ApPassword                       string
-	ApChannel                        int
-	SwitchAddress                    string
-	SwitchPassword                   string
+	Id                         int `db:"id"`
+	Name                       string
+	PlayoffType                PlayoffType
+	NumPlayoffAlliances        int
+	SelectionRound2Order       string
+	SelectionRound3Order       string
+	SelectionShowUnpickedTeams bool
+	TbaDownloadEnabled         bool
+	TbaPublishingEnabled       bool
+	TbaEventCode               string
+	TbaSecretId                string
+	TbaSecret                  string
+	NexusEnabled               bool
+	NetworkSecurityEnabled     bool
+	ApAddress                  string
+	ApPassword                 string
+	ApChannel                  int
+	SwitchAddress              string
+	SwitchPassword             string
 	// SwitchDnsServer is handed to team subnets in the per-match DHCP pools. Blank omits
 	// the option entirely, which is correct for a field with no upstream resolver: a
 	// DNS server clients cannot reach makes lookups time out rather than fail fast.
-	SwitchDnsServer string
-	RedEStopPanelAddress             string
-	BlueEStopPanelAddress            string
+	SwitchDnsServer       string
+	RedEStopPanelAddress  string
+	BlueEStopPanelAddress string
 	// FieldEStopPin is the BCM pin carrying the field e-stop's NO contact, and
 	// FieldEStopNcPin the NC contact. Both set, the two channels are compared and
 	// a disagreement is reported as a wiring fault; FieldEStopNcPin left at 0
@@ -103,13 +103,16 @@ type EventSettings struct {
 	// full-field one (eight fixtures per alliance across four sides of each goal).
 	// HubLedsFallback names how much the fixtures can render: "full", "solid", or
 	// "binary".
-	HubLedsAddress        string
-	HubLedsSimplified     bool
-	HubLedsFallback       string
-	HubLedsRedUniverse    int
-	HubLedsRedAddress     int
-	HubLedsBlueUniverse   int
-	HubLedsBlueAddress    int
+	HubLedsAddress string
+	// HubLedsArtNet sends Art-Net instead of E1.31 sACN. Same pixels and layout; a
+	// different packet on a different port, for a node that speaks only Art-Net.
+	HubLedsArtNet       bool
+	HubLedsSimplified   bool
+	HubLedsFallback     string
+	HubLedsRedUniverse  int
+	HubLedsRedAddress   int
+	HubLedsBlueUniverse int
+	HubLedsBlueAddress  int
 }
 
 // applyHubLedDefaults fills in Hub LED settings that a database predating them has no

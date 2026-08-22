@@ -26,12 +26,45 @@ const (
 	hubLightScoringAssessmentSec = 3
 )
 
+// ledController is the Hub LED surface the arena uses. Two implementations: led.Controller
+// speaks E1.31 sACN, led.ArtNetController speaks Art-Net, and the checkbox under
+// Arena > Settings > LEDs picks between them. Everything above the wire is identical.
+type ledController interface {
+	SetAddress(address string) error
+	SetLayout(red, blue []led.FixtureSpec) error
+	UseDefaultLayout()
+	SetMode(redMode, blueMode led.Mode)
+	GetModes() (led.Mode, led.Mode)
+	GetPixels() ([64]led.Color, [64]led.Color)
+	Update() error
+}
+
+// newLedController builds the controller for the configured protocol.
+func newLedController(artNet bool) ledController {
+	if artNet {
+		return led.NewArtNetController()
+	}
+	return led.NewController()
+}
+
 // applyHubLedSettings pushes the stored Hub LED configuration into the controller.
 // Called on every settings load, so changes take effect without restarting bioarena.
 //
 // Configuration errors are logged and leave the previous layout in place rather than
 // returning: a bad fixture address should not stop the arena from loading.
 func (arena *Arena) applyHubLedSettings(settings *model.EventSettings) {
+	// Rebuilt when the protocol changes: the two speak different ports, so switching means
+	// a new connection rather than a new field on the old one.
+	if settings.HubLedsArtNet != arena.hubLedsArtNet {
+		arena.hubLedsArtNet = settings.HubLedsArtNet
+		arena.Leds = newLedController(settings.HubLedsArtNet)
+		if settings.HubLedsArtNet {
+			log.Println("Hub LEDs: sending Art-Net.")
+		} else {
+			log.Println("Hub LEDs: sending E1.31 sACN.")
+		}
+	}
+
 	if err := arena.Leds.SetAddress(settings.HubLedsAddress); err != nil {
 		log.Printf("Hub LEDs: could not set address %q: %v", settings.HubLedsAddress, err)
 	}

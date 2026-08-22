@@ -4,11 +4,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/team841/bioarena/game"
 	"github.com/team841/bioarena/hardware"
 	"github.com/team841/bioarena/led"
 	"github.com/team841/bioarena/model"
-	"github.com/stretchr/testify/assert"
 )
 
 // teleopOffset returns a match start time placing the given remaining teleop seconds.
@@ -178,4 +178,23 @@ func TestUpdateHubLedsNoAddressDoesNotError(t *testing.T) {
 	arena.MatchStartTime = teleopOffset(100)
 
 	assert.NotPanics(t, func() { arena.updateHubLeds(time.Now()) })
+}
+
+// The checkbox picks the wire protocol. The two speak different ports, so switching means
+// a new controller rather than a new field on the old one.
+func TestHubLedProtocolSwitch(t *testing.T) {
+	arena := setupTestArena(t)
+
+	_, isSacn := arena.Leds.(*led.Controller)
+	assert.True(t, isSacn, "sACN is the default")
+
+	arena.EventSettings.HubLedsArtNet = true
+	arena.applyHubLedSettings(arena.EventSettings)
+	_, isArtNet := arena.Leds.(*led.ArtNetController)
+	assert.True(t, isArtNet, "ticking the box should switch to Art-Net")
+
+	arena.EventSettings.HubLedsArtNet = false
+	arena.applyHubLedSettings(arena.EventSettings)
+	_, isSacn = arena.Leds.(*led.Controller)
+	assert.True(t, isSacn, "unticking it should switch back")
 }

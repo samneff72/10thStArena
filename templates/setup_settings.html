@@ -240,12 +240,28 @@ UI for configuring event settings.
               </p>
               <div class="row mb-3">
                 <label class="col-lg-6 control-label" for="hubLedsAddress">
-                  sACN Receiver Address
+                  LED Receiver Address
                 </label>
                 <div class="col-lg-4">
                   <input type="text" class="form-control" id="hubLedsAddress" name="hubLedsAddress"
-                    value="{{.HubLedsAddress}}" placeholder="e.g. 10.0.100.20">
+                    value="{{.HubLedsAddress}}" placeholder="e.g. 10.0.100.100">
                   <small class="text-body-secondary">Leave blank to disable LED output.</small>
+                </div>
+              </div>
+              <div class="row mb-3">
+                <label class="col-lg-6 control-label" for="hubLedsArtNet">
+                  Send Art-Net instead of sACN
+                </label>
+                <div class="col-lg-1 checkbox">
+                  <input type="checkbox" id="hubLedsArtNet" name="hubLedsArtNet"
+                    {{if .HubLedsArtNet}} checked{{end}}>
+                </div>
+                <div class="col-lg-5">
+                  <small class="text-body-secondary">
+                    Same pixels and layout, a different packet: Art-Net on UDP 6454 rather than E1.31 sACN on
+                    5568. Tick it for a node that speaks only Art-Net. Art-Net numbers universes from zero, so
+                    universe 1 below is what such a node calls universe 0.
+                  </small>
                 </div>
               </div>
               <div class="row mb-3">

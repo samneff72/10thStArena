@@ -61,7 +61,8 @@ type Arena struct {
 	teamNetwork      teamNetwork
 	Plc              plc.Plc
 	FieldLights      hardware.FieldLights
-	Leds             *led.Controller
+	Leds             ledController
+	hubLedsArtNet    bool
 	hubLedFallback   led.Fallback
 	EStopPanels      []hardware.EStopPanel
 	FieldEStop       hardware.FieldEStopPanel
@@ -124,7 +125,7 @@ func NewArena(dbPath string) (*Arena, error) {
 	arena.Plc = new(plc.FakePlc)
 	arena.FieldLights = &hardware.NoopFieldLights{}
 	// Output stays disabled until an sACN address is configured.
-	arena.Leds = led.NewController()
+	arena.Leds = newLedController(false)
 	arena.EStopPanels = []hardware.EStopPanel{}
 	arena.FieldEStop = &hardware.NoopFieldEStopPanel{}
 
