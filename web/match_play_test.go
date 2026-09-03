@@ -426,3 +426,33 @@ func TestMatchPlayWebsocketStartMatchWithRegisteredTeamAndBypass(t *testing.T) {
 	readWebsocketType(t, ws, "arenaStatus")
 	assert.Equal(t, field.StartMatch, web.arena.MatchState)
 }
+
+// The duplicate rejection has to reach the operator: registering the same team twice
+// otherwise looks like it worked while the station lookups behave nondeterministically.
+func TestMatchPlayWebsocketRejectsDuplicateTeams(t *testing.T) {
+	web := setupTestWeb(t)
+	web.arena.Database.CreateTeam(&model.Team{Id: 841})
+	web.arena.Database.CreateTeam(&model.Team{Id: 9841})
+
+	server, wsUrl := web.startTestServer()
+	defer server.Close()
+	conn, _, err := gorillawebsocket.DefaultDialer.Dial(wsUrl+"/match_play/websocket", nil)
+	assert.Nil(t, err)
+	defer conn.Close()
+	ws := websocket.NewTestWebsocket(conn)
+	readWebsocketMultiple(t, ws, 4)
+
+	ws.Write("registerTeams", map[string]int{
+		"Red1": 841, "Red2": 841, "Red3": 0, "Blue1": 0, "Blue2": 0, "Blue3": 0,
+	})
+	readWebsocketType(t, ws, "error")
+	assert.Nil(t, web.arena.AllianceStations["R1"].Team, "no station should have been assigned")
+
+	// Distinct numbers register normally.
+	ws.Write("registerTeams", map[string]int{
+		"Red1": 841, "Red2": 9841, "Red3": 0, "Blue1": 0, "Blue2": 0, "Blue3": 0,
+	})
+	readWebsocketType(t, ws, "matchLoad")
+	assert.Equal(t, 841, web.arena.AllianceStations["R1"].Team.Id)
+	assert.Equal(t, 9841, web.arena.AllianceStations["R2"].Team.Id)
+}

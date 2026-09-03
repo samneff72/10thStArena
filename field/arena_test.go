@@ -1058,3 +1058,39 @@ func TestPlcMatchCycleEvergreen(t *testing.T) {
 	assert.Equal(t, [4]bool{false, false, false, false}, plc.stackLights)
 	assert.Equal(t, false, plc.fieldResetLight)
 }
+
+// A driver station is identified by its team number, and both the station lookup and the
+// UDP receive path find a station by scanning for a matching team. Go randomises map
+// iteration, so one team in two stations makes those lookups nondeterministic: two driver
+// stations contend for one connection and telemetry lands on whichever station the map
+// happens to yield. Reject the assignment instead of misbehaving silently.
+func TestSubstituteTeamsRejectsDuplicates(t *testing.T) {
+	arena := setupTestArena(t)
+	for _, id := range []int{841, 9841, 1323} {
+		assert.Nil(t, arena.Database.CreateTeam(&model.Team{Id: id}))
+	}
+
+	err := arena.SubstituteTeams(841, 841, 0, 0, 0, 0)
+	if assert.NotNil(t, err) {
+		assert.Contains(t, err.Error(), "more than one station")
+	}
+
+	// Across alliances counts too -- the collision is the team number, not the side.
+	err = arena.SubstituteTeams(841, 0, 0, 841, 0, 0)
+	assert.NotNil(t, err)
+
+	// Distinct numbers are fine, which is how a second robot of the same team runs.
+	assert.Nil(t, arena.SubstituteTeams(841, 9841, 1323, 0, 0, 0))
+	assert.Equal(t, 841, arena.AllianceStations["R1"].Team.Id)
+	assert.Equal(t, 9841, arena.AllianceStations["R2"].Team.Id)
+}
+
+// Empty stations are team ID 0 and there are normally several, so they must not trip the
+// duplicate check.
+func TestSubstituteTeamsAllowsMultipleEmptyStations(t *testing.T) {
+	arena := setupTestArena(t)
+	assert.Nil(t, arena.Database.CreateTeam(&model.Team{Id: 841}))
+
+	assert.Nil(t, arena.SubstituteTeams(841, 0, 0, 0, 0, 0))
+	assert.Nil(t, arena.SubstituteTeams(0, 0, 0, 0, 0, 0))
+}

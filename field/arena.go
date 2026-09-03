@@ -664,12 +664,30 @@ func (arena *Arena) Run() {
 	}
 }
 
-// Checks that the given teams are present in the database, allowing team ID 0 which indicates an empty spot.
+// Checks that the given teams are present in the database and that none appears twice,
+// allowing team ID 0 which indicates an empty spot.
+//
+// The duplicate check matters more than it looks. A driver station is identified by its
+// team number: both getAssignedAllianceStation and the UDP receive path find a station by
+// scanning for a matching team. Go randomises map iteration order, so with one team in
+// two stations those lookups return an arbitrary one of them, varying call to call. Two
+// driver stations would contend for a single station's connection and telemetry would
+// land on whichever the map happened to yield.
+//
+// The addressing collides too -- both stations derive the same subnet, the same SVI
+// address, the same DHCP pool and the same SSID -- but the identity collision is the one
+// that produces silent, nondeterministic misbehaviour rather than a switch error.
 func (arena *Arena) validateTeams(teamIds ...int) error {
+	seen := make(map[int]struct{}, len(teamIds))
 	for _, teamId := range teamIds {
 		if teamId == 0 {
 			continue
 		}
+		if _, duplicate := seen[teamId]; duplicate {
+			return fmt.Errorf("Team %d is assigned to more than one station.", teamId)
+		}
+		seen[teamId] = struct{}{}
+
 		team, err := arena.Database.GetTeamById(teamId)
 		if err != nil {
 			return err
