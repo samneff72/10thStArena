@@ -1094,3 +1094,83 @@ func TestSubstituteTeamsAllowsMultipleEmptyStations(t *testing.T) {
 	assert.Nil(t, arena.SubstituteTeams(841, 0, 0, 0, 0, 0))
 	assert.Nil(t, arena.SubstituteTeams(0, 0, 0, 0, 0, 0))
 }
+
+// The field returns to PreMatch on its own. Clearing used to require an operator action,
+// so anything that cost them the web UI at match end -- a driver station laptop losing
+// its connection, for instance -- left the field stuck in PostMatch with no way back
+// except reaching the Pi directly.
+func TestPostMatchAutoClearsAfterTimerExpiry(t *testing.T) {
+	arena := setupTestArena(t)
+	assert.Nil(t, arena.Database.CreateTeam(&model.Team{Id: 841}))
+	// Register through SubstituteTeams rather than assignTeam: ClearMatch preserves the
+	// assignments from CurrentMatch, which only the registration path populates.
+	assert.Nil(t, arena.SubstituteTeams(841, 0, 0, 0, 0, 0))
+	for _, station := range []string{"R2", "R3", "B1", "B2", "B3"} {
+		arena.AllianceStations[station].Bypass.Store(true)
+	}
+	arena.AllianceStations["R1"].DsConn = &DriverStationConnection{TeamId: 841}
+	arena.AllianceStations["R1"].DsConn.RobotLinked = true
+
+	assert.Nil(t, arena.StartMatch())
+
+	// The first Update processes StartMatch, which sets MatchStartTime to now -- so the
+	// clock can only be rewound after it. The machine then advances one period per
+	// Update, so run it forward until it settles in PostMatch.
+	arena.Update()
+	arena.MatchStartTime = time.Now().Add(-game.GetDurationToTeleopEnd())
+	for i := 0; i < 10 && arena.MatchState != PostMatch; i++ {
+		arena.Update()
+	}
+	assert.Equal(t, PostMatch, arena.MatchState)
+
+	// Still dwelling immediately after the match, so results stay on screen.
+	arena.Update()
+	assert.Equal(t, PostMatch, arena.MatchState)
+
+	// Cleared once the dwell elapses, without anyone touching the UI.
+	arena.postMatchStartTime = time.Now().Add(-postMatchAutoClearDelaySec * time.Second)
+	arena.Update()
+	assert.Equal(t, PreMatch, arena.MatchState)
+
+	// Team assignments survive, so the next practice round needs no re-registration.
+	assert.Equal(t, 841, arena.AllianceStations["R1"].Team.Id)
+}
+
+// An aborted match reaches PostMatch by a different path and must clear the same way.
+func TestPostMatchAutoClearsAfterAbort(t *testing.T) {
+	arena := setupTestArena(t)
+	for _, station := range []string{"R1", "R2", "R3", "B1", "B2", "B3"} {
+		arena.AllianceStations[station].Bypass.Store(true)
+	}
+
+	assert.Nil(t, arena.StartMatch())
+	arena.Update()
+	assert.Nil(t, arena.AbortMatch())
+	assert.Equal(t, PostMatch, arena.MatchState)
+
+	arena.Update()
+	assert.Equal(t, PostMatch, arena.MatchState, "should dwell before clearing")
+
+	arena.postMatchStartTime = time.Now().Add(-postMatchAutoClearDelaySec * time.Second)
+	arena.Update()
+	assert.Equal(t, PreMatch, arena.MatchState)
+}
+
+// Clearing manually before the dwell elapses must not be undone or double-applied.
+func TestPostMatchManualClearStillWorks(t *testing.T) {
+	arena := setupTestArena(t)
+	for _, station := range []string{"R1", "R2", "R3", "B1", "B2", "B3"} {
+		arena.AllianceStations[station].Bypass.Store(true)
+	}
+
+	assert.Nil(t, arena.StartMatch())
+	arena.Update()
+	assert.Nil(t, arena.AbortMatch())
+	assert.Nil(t, arena.ClearMatch())
+	assert.Equal(t, PreMatch, arena.MatchState)
+
+	// The stale timestamp must not drag the field out of PreMatch on the next tick.
+	arena.postMatchStartTime = time.Now().Add(-postMatchAutoClearDelaySec * time.Second)
+	arena.Update()
+	assert.Equal(t, PreMatch, arena.MatchState)
+}

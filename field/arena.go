@@ -30,6 +30,11 @@ const (
 	periodicTaskPeriodSec    = 30
 	matchEndScoreDwellSec    = 3
 	preLoadNextMatchDelaySec = 5
+
+	// How long the field dwells in PostMatch before returning to PreMatch on its own.
+	// Long enough for the end-of-match sounds and the Hub LED post-match sequence to
+	// finish, short enough that a practice round turns around quickly.
+	postMatchAutoClearDelaySec = 5
 	scheduledBreakDelaySec   = 5
 	earlyLateThresholdMin    = 2.5
 
@@ -76,6 +81,7 @@ type Arena struct {
 	lastLightingState    hardware.LightingState
 	CurrentMatch         *model.Match
 	MatchStartTime       time.Time
+	postMatchStartTime   time.Time
 	LastMatchTimeSec     float64
 	lastDsPacketTime     time.Time
 	lastPeriodicTaskTime time.Time
@@ -394,6 +400,7 @@ func (arena *Arena) AbortMatch() error {
 		arena.PlaySound("abort")
 	}
 	arena.MatchState = PostMatch
+	arena.postMatchStartTime = time.Now()
 	arena.matchAborted = true
 	return nil
 }
@@ -551,6 +558,7 @@ func (arena *Arena) Update() {
 		enabled = true
 		if matchTimeSec >= game.GetDurationToTeleopEnd().Seconds() {
 			arena.MatchState = PostMatch
+			arena.postMatchStartTime = time.Now()
 			auto = false
 			enabled = false
 			sendDsPacket = true
@@ -559,6 +567,18 @@ func (arena *Arena) Update() {
 				time.Sleep(time.Second * preLoadNextMatchDelaySec)
 				arena.preLoadNextMatch()
 			}()
+		}
+	case PostMatch:
+		auto = false
+		enabled = false
+
+		// Return to PreMatch without an operator action. Clearing used to require one, so
+		// anything that cost the operator their web UI at match end left the field stuck
+		// here with no way back except reaching the Pi directly.
+		if time.Since(arena.postMatchStartTime) >= postMatchAutoClearDelaySec*time.Second {
+			if err := arena.ClearMatch(); err != nil {
+				log.Printf("Failed to clear match automatically: %v", err)
+			}
 		}
 	case FreePractice:
 		// No timer logic; stations are granted field-enable continuously.
