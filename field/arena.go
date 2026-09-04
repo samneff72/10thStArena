@@ -435,9 +435,29 @@ func (arena *Arena) ClearMatch() error {
 	blue1 := arena.CurrentMatch.Blue1
 	blue2 := arena.CurrentMatch.Blue2
 	blue3 := arena.CurrentMatch.Blue3
+
+	// Carry bypass state across the clear, alongside the team assignments. A practice
+	// field runs the same lineup round after round, and ResetMatch clearing every bypass
+	// meant re-bypassing the empty stations after every match -- now that clearing
+	// happens on its own, that would be every round without anyone asking for it.
+	//
+	// Restored after LoadMatch rather than skipped in ResetMatch, whose own callers still
+	// want a full reset.
+	bypassed := make(map[string]bool, len(arena.AllianceStations))
+	for station, allianceStation := range arena.AllianceStations {
+		bypassed[station] = allianceStation.Bypass.Load()
+	}
+
 	if err := arena.ResetMatch(); err != nil {
 		return err
 	}
+
+	defer func() {
+		for station, wasBypassed := range bypassed {
+			arena.AllianceStations[station].Bypass.Store(wasBypassed)
+		}
+	}()
+
 	return arena.LoadMatch(&model.Match{
 		Type:      model.Test,
 		ShortName: "T",

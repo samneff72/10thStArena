@@ -1174,3 +1174,50 @@ func TestPostMatchManualClearStillWorks(t *testing.T) {
 	arena.Update()
 	assert.Equal(t, PreMatch, arena.MatchState)
 }
+
+// Bypass survives a clear, alongside the team assignments. A practice field runs the
+// same lineup round after round, and with the field now clearing itself the operator
+// would otherwise re-bypass the empty stations after every match.
+func TestClearMatchPreservesBypass(t *testing.T) {
+	arena := setupTestArena(t)
+	assert.Nil(t, arena.Database.CreateTeam(&model.Team{Id: 841}))
+	assert.Nil(t, arena.SubstituteTeams(841, 0, 0, 0, 0, 0))
+
+	assert.Equal(t, 5, arena.BypassEmptyStations())
+	arena.AllianceStations["R1"].DsConn = &DriverStationConnection{TeamId: 841}
+	arena.AllianceStations["R1"].DsConn.RobotLinked = true
+
+	assert.Nil(t, arena.StartMatch())
+	arena.Update()
+	assert.Nil(t, arena.AbortMatch())
+	assert.Nil(t, arena.ClearMatch())
+
+	// The occupied station stays live and the five empty ones stay bypassed, so the next
+	// round is startable without touching anything.
+	assert.False(t, arena.AllianceStations["R1"].Bypass.Load())
+	for _, station := range []string{"R2", "R3", "B1", "B2", "B3"} {
+		assert.True(t, arena.AllianceStations[station].Bypass.Load(), "station %s lost its bypass", station)
+	}
+	assert.Equal(t, 841, arena.AllianceStations["R1"].Team.Id)
+
+	// Readiness itself is not asserted here: Update recalculates RobotLinked from packet
+	// timing, so a stub connection goes stale and only a real driver station would keep
+	// the station ready. Bypass state is what this test is about.
+}
+
+// An operator bypass of an occupied station is intent, not a side effect of empty
+// stations, and must survive too.
+func TestClearMatchPreservesManualBypassOfOccupiedStation(t *testing.T) {
+	arena := setupTestArena(t)
+	assert.Nil(t, arena.Database.CreateTeam(&model.Team{Id: 841}))
+	assert.Nil(t, arena.SubstituteTeams(841, 0, 0, 0, 0, 0))
+	arena.BypassEmptyStations()
+	arena.AllianceStations["R1"].Bypass.Store(true)
+
+	assert.Nil(t, arena.StartMatch())
+	arena.Update()
+	assert.Nil(t, arena.AbortMatch())
+	assert.Nil(t, arena.ClearMatch())
+
+	assert.True(t, arena.AllianceStations["R1"].Bypass.Load(), "operator bypass was cleared")
+}
