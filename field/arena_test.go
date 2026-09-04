@@ -1096,9 +1096,9 @@ func TestSubstituteTeamsAllowsMultipleEmptyStations(t *testing.T) {
 }
 
 // The field returns to PreMatch on its own. Clearing used to require an operator action,
-// so anything that cost them the web UI at match end -- a driver station laptop losing
-// its connection, for instance -- left the field stuck in PostMatch with no way back
-// except reaching the Pi directly.
+// which stranded the field whenever the operator lost the web UI at match end -- as they
+// do every round when running field control from a driver station laptop, since the FRC
+// Driver Station releases its IP configuration when a match ends.
 func TestPostMatchAutoClearsAfterTimerExpiry(t *testing.T) {
 	arena := setupTestArena(t)
 	assert.Nil(t, arena.Database.CreateTeam(&model.Team{Id: 841}))

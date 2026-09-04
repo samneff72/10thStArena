@@ -592,9 +592,14 @@ func (arena *Arena) Update() {
 		auto = false
 		enabled = false
 
-		// Return to PreMatch without an operator action. Clearing used to require one, so
-		// anything that cost the operator their web UI at match end left the field stuck
-		// here with no way back except reaching the Pi directly.
+		// Return to PreMatch without an operator action. Clearing used to require one,
+		// which stranded the field whenever the operator lost the web UI at match end.
+		//
+		// That is not hypothetical: the FRC Driver Station releases its IP configuration
+		// when a match ends, so an operator running field control from a driver station
+		// laptop is disconnected every single round. It is the driver station's own
+		// behaviour and nothing here can prevent it, but the field no longer needs the
+		// operator in order to reset.
 		if time.Since(arena.postMatchStartTime) >= postMatchAutoClearDelaySec*time.Second {
 			if err := arena.ClearMatch(); err != nil {
 				log.Printf("Failed to clear match automatically: %v", err)

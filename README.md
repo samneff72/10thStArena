@@ -648,11 +648,26 @@ ssh <USER>@10.0.100.5 "sudo rm -f /opt/bioarena/logs/*.csv"
 Match Play does not record scores or results — it is a pure practice tool. Each match is a standalone timed run.
 
 1. Open `http://10.0.100.5:8080` in a browser on any device on the field network.
-2. Go to **Setup > Teams** and enter the team numbers for each station.
-3. Go to **Match Play**.
-4. Type team numbers into the station fields and click **Register** to assign them, or check **BYP** to bypass empty stations.
+2. Go to **Teams** and enter the team numbers for each station.
+3. Go to **Match**.
+4. Type team numbers into the station fields and click **Register** to assign them, then
+   click **Bypass Empty** to bypass the stations with no team, or check **BYP** individually.
 5. Wait for assigned stations to show a DS connection (or bypass them), then click **Start Match**.
-6. After the match ends, click **Clear Match** to reset and run another round.
+6. The field returns to pre-match on its own a few seconds after the match ends, keeping
+   the team assignments and bypasses, so another round can start immediately. **Clear
+   Match** does the same thing straight away.
+
+> **Do not run field control from a driver station laptop.**
+>
+> The FRC Driver Station software releases its IP configuration at the end of every
+> match. That is the driver station's own behaviour, not something bioarena or the field
+> does to it — but any browser session that laptop had open to the field UI dies with the
+> address, mid-round, every round.
+>
+> Symptom: the operator is thrown out of the field controls the instant the match ends.
+> Before the field cleared itself, that also left it stuck in post-match with no way back
+> except reaching the Pi directly. Use a separate device — a phone, a tablet, or the Pi
+> itself — for field control.
 
 Match timing defaults (2026 REBUILT):
 
