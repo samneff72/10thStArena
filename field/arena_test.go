@@ -9,6 +9,7 @@ import (
 	"github.com/team841/bioarena/hardware"
 	"github.com/team841/bioarena/model"
 	"github.com/stretchr/testify/assert"
+	"sync"
 	"testing"
 	"time"
 )
@@ -1220,4 +1221,111 @@ func TestClearMatchPreservesManualBypassOfOccupiedStation(t *testing.T) {
 	assert.Nil(t, arena.ClearMatch())
 
 	assert.True(t, arena.AllianceStations["R1"].Bypass.Load(), "operator bypass was cleared")
+}
+
+// Two operators driving the field at once, against a running match loop and the periodic
+// station-port poll. Nothing serialised these before: sendDsPacket and
+// recoverMissingDriverStations both read Team.Id after a nil check, while assignTeam
+// clears Team from a web goroutine -- straddle that and the process panics, taking the
+// field down mid-session.
+//
+// This exercises the interleaving rather than proving its absence, which needs the race
+// detector and so cgo. It does catch deadlocks, the likelier mistake when introducing a
+// lock, and it covers the paths reachable from the arena loop and from background
+// goroutines.
+func TestConcurrentOperatorsDoNotDeadlockOrPanic(t *testing.T) {
+	arena := setupTestArena(t)
+	for _, id := range []int{841, 9841} {
+		assert.Nil(t, arena.Database.CreateTeam(&model.Team{Id: id}))
+	}
+
+	// The match loop and the periodic poll run until the operators finish. They are
+	// waited on separately: folding them into the operators' WaitGroup makes the wait
+	// circular, since they only stop once that wait has already returned.
+	stop := make(chan struct{})
+	var background sync.WaitGroup
+
+	background.Add(1)
+	go func() {
+		defer background.Done()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				arena.Update()
+				// The real loop cadence. Spinning starves the operators and is
+				// indistinguishable from a deadlock.
+				time.Sleep(time.Millisecond)
+			}
+		}
+	}()
+
+	background.Add(1)
+	go func() {
+		defer background.Done()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				arena.pollStationPortLinks()
+				time.Sleep(time.Millisecond)
+			}
+		}
+	}()
+
+	var operators sync.WaitGroup
+	for i := 0; i < 2; i++ {
+		operators.Add(1)
+		go func(operator int) {
+			defer operators.Done()
+			for n := 0; n < 50; n++ {
+				// Errors are expected and ignored: the state guards reject commands that
+				// do not apply, which is the right outcome when operators disagree.
+				if operator == 0 {
+					_ = arena.SubstituteTeams(841, 0, 0, 9841, 0, 0)
+					arena.BypassEmptyStations()
+					_ = arena.StartMatch()
+					arena.DisableField()
+				} else {
+					_ = arena.SetAutoWinnerMode(AutoWinnerForceRed)
+					_ = arena.AbortMatch()
+					_ = arena.ClearMatch()
+					arena.EnableField()
+				}
+			}
+		}(i)
+	}
+
+	operatorsDone := make(chan struct{})
+	go func() {
+		operators.Wait()
+		close(operatorsDone)
+	}()
+
+	select {
+	case <-operatorsDone:
+	case <-time.After(20 * time.Second):
+		t.Fatal("timed out -- the arena lock deadlocked under concurrent operators")
+	}
+
+	close(stop)
+	backgroundDone := make(chan struct{})
+	go func() {
+		background.Wait()
+		close(backgroundDone)
+	}()
+	select {
+	case <-backgroundDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("a background loop did not stop -- it is stuck on the arena lock")
+	}
+
+	// The field is still in a state the guards recognise rather than something torn.
+	assert.Contains(
+		t,
+		[]MatchState{PreMatch, StartMatch, WarmupPeriod, AutoPeriod, PausePeriod, TeleopPeriod, PostMatch},
+		arena.MatchState,
+	)
 }
