@@ -222,7 +222,10 @@ input[data-changed="true"], select[data-changed="true"] {
 /* Station card grid */
 .mp-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  /* minmax(0, 1fr) rather than 1fr: the shorthand floors each column at its min-content
+     width, so a nowrap child -- the DS voltage and stop badges -- widens the whole grid
+     past the viewport and the page scrolls sideways. The team input already shrinks. */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
 }
 .mp-card {
@@ -281,6 +284,21 @@ input[data-changed="true"], select[data-changed="true"] {
 .mp-card-ds[data-ok="true"]  { background: #0a0; }
 .mp-card-ds[data-ok="mid"]   { background: #870; }
 .mp-card-ds[data-ok="false"] { background: #600; }
+
+/* Which stop is latched on this station. Named rather than colour-coded alone: the
+   card's own background already carries the state, but only for someone who knows the
+   palette. Hidden when neither stop is active. */
+.mp-card-stop {
+  font-size: 11px;
+  font-weight: bold;
+  padding: 2px 4px;
+  border-radius: 3px;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  color: #fff;
+}
+.mp-card-stop[data-kind="estop"] { background: #c00; }
+.mp-card-stop[data-kind="astop"] { background: #a70; }
 
 /* Card bottom row: E-stop + Bypass */
 .mp-card-bottom {

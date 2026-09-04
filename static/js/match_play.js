@@ -116,6 +116,23 @@ const handleArenaStatus = function (data) {
     estopBtn.dataset.active = st.EStop ? "true" : "false";
     estopBtn.textContent = st.EStop ? "UN-STOP" : "E-STOP";
 
+    // Spell out which stop is active. The card already changes colour, but an operator
+    // who does not know the palette cannot read a background alone -- and A-stop's is a
+    // muted olive that is easy to miss entirely. E-stop wins when both are latched,
+    // matching the card styling.
+    const stopEl = document.getElementById("stop-" + station);
+    if (st.EStop) {
+      stopEl.textContent = "E-STOP";
+      stopEl.dataset.kind = "estop";
+      stopEl.hidden = false;
+    } else if (st.AStop) {
+      stopEl.textContent = "A-STOP";
+      stopEl.dataset.kind = "astop";
+      stopEl.hidden = false;
+    } else {
+      stopEl.hidden = true;
+    }
+
     // Bypass checkbox.
     bypassChk.checked = st.Bypass;
   }
