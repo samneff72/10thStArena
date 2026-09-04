@@ -657,17 +657,12 @@ Match Play does not record scores or results — it is a pure practice tool. Eac
    the team assignments and bypasses, so another round can start immediately. **Clear
    Match** does the same thing straight away.
 
-> **Do not run field control from a driver station laptop.**
->
-> The FRC Driver Station software releases its IP configuration at the end of every
-> match. That is the driver station's own behaviour, not something bioarena or the field
-> does to it — but any browser session that laptop had open to the field UI dies with the
-> address, mid-round, every round.
->
-> Symptom: the operator is thrown out of the field controls the instant the match ends.
-> Before the field cleared itself, that also left it stuck in post-match with no way back
-> except reaching the Pi directly. Use a separate device — a phone, a tablet, or the Pi
-> itself — for field control.
+> **Do not run field control from a driver station laptop.** The driver station releases
+> its IP address at the end of every match — see
+> [Driver station behaviour worth knowing](#driver-station-behaviour-worth-knowing) — and
+> any browser session that laptop had open to the field UI dies with the address, every
+> round. The operator is thrown out of the field controls the instant the match ends. Use
+> a separate device: a phone, a tablet, or the Pi itself.
 
 Match timing defaults (2026 REBUILT):
 
