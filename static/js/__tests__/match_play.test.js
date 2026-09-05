@@ -446,3 +446,35 @@ describe("handleMatchLoad", () => {
     expect(document.getElementById("testMatchNameWrap").style.display).toBe("none");
   });
 });
+
+// ---- Free practice follow ----------------------------------------------------
+
+// A kiosk left on match play while another operator starts free practice would
+// otherwise sit on a screen of dead buttons -- every control disables itself in that
+// state -- with nothing saying why.
+describe("handleArenaStatus — follows the field into free practice", () => {
+  let originalLocation;
+
+  beforeEach(() => {
+    originalLocation = window.location;
+    delete window.location;
+    window.location = { href: "" };
+  });
+
+  afterEach(() => {
+    window.location = originalLocation;
+  });
+
+  test("navigates to free practice when the arena enters it", () => {
+    handleArenaStatus(makeStatus(7 /* FREE_PRACTICE */, false));
+    expect(window.location.href).toBe("/free_practice");
+  });
+
+  test("stays put for every other state", () => {
+    for (const state of [0, 1, 2, 3, 4, 5, 6]) {
+      window.location.href = "";
+      handleArenaStatus(makeStatus(state, false));
+      expect(window.location.href).toBe("");
+    }
+  });
+});
