@@ -142,6 +142,20 @@ ssh "${SSH_OPTS[@]}" -t "$REMOTE" "
 	# system user with no login, so a field controller does not depend on which username
 	# the SD card was flashed with.
 	id bioarena >/dev/null 2>&1 || sudo useradd --system --home-dir /opt/bioarena --shell /usr/sbin/nologin bioarena
+
+	# The gpio group, for the field e-stop pins. deploy-panel.sh has always done this for
+	# the panel Pis and this did not, so a field e-stop wired to the controller's own GPIO
+	# failed to open /dev/gpiochip0 with a permission error -- and the arena then falls back
+	# to a panel that reports no stops, which looks like healthy hardware.
+	#
+	# Before the service starts, since a process takes its groups at exec: adding the group
+	# under a running service changes nothing until it is restarted.
+	#
+	# The group is absent on a minimal image with no GPIO tooling installed, so it is
+	# created if missing rather than failing the deploy.
+	getent group gpio >/dev/null 2>&1 || sudo groupadd --system gpio
+	sudo usermod -aG gpio bioarena
+
 	sudo mkdir -p /opt/bioarena
 	sudo chown bioarena:bioarena /opt/bioarena
 

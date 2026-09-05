@@ -876,6 +876,19 @@ in the `gpio` group. That last one is what bites when it is done by hand — wit
 panel starts, logs that it cannot open the GPIO chip, and reports no stops, which is a
 field that looks fine and has no working e-stops.
 
+`deploy-fms.sh` does the same for the controller, which needs it whenever the **field**
+e-stop is wired to the controller's own GPIO rather than to a panel. The symptom is
+identical and just as quiet: `cannot open /dev/gpiochip0: permission denied` in the log,
+after which the arena installs a panel that reports no stops at all — so the badge is green
+and nothing is watching the button.
+
+Group membership is taken at process start, so adding it by hand needs a restart, not a
+settings save:
+
+```bash
+sudo usermod -aG gpio bioarena && sudo systemctl restart bioarena
+```
+
 Wire the main bioarena to the panel by adding to `config.yaml` and restarting:
 
 ```yaml
