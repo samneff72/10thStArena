@@ -53,9 +53,20 @@ func newLedController(artNet bool) ledController {
 // Configuration errors are logged and leave the previous layout in place rather than
 // returning: a bad fixture address should not stop the arena from loading.
 func (arena *Arena) applyHubLedSettings(settings *model.EventSettings) {
+	// A settings save is a fresh chance to report, so a failure that persists across one is
+	// said again rather than staying suppressed from before the change.
+	arena.hubLedsFailing = false
+
 	// Rebuilt when the protocol changes: the two speak different ports, so switching means
 	// a new connection rather than a new field on the old one.
 	if settings.HubLedsArtNet != arena.hubLedsArtNet {
+		// Release the outgoing controller's socket before the reference is dropped.
+		// SetAddress("") is how: it closes the connection and is already on the interface.
+		// The led package is kept byte-identical to upstream, so there is no Close to add
+		// there -- see docs/upstream-divergences.md.
+		if arena.Leds != nil {
+			_ = arena.Leds.SetAddress("")
+		}
 		arena.hubLedsArtNet = settings.HubLedsArtNet
 		arena.Leds = newLedController(settings.HubLedsArtNet)
 		if settings.HubLedsArtNet {
@@ -131,8 +142,22 @@ func (arena *Arena) updateHubLeds(currentTime time.Time) {
 		}
 	}
 
+	// Logged on the transition into failure and on recovery, not on every attempt. This runs
+	// on the arena loop at 100 Hz, so an unreachable receiver -- a gateway that is unplugged,
+	// or an address left pointing at hardware that is not there -- otherwise writes a hundred
+	// identical lines a second and buries everything else in the journal.
 	if err := arena.Leds.Update(); err != nil {
-		log.Printf("Failed to update hub LEDs: %s", err)
+		if !arena.hubLedsFailing {
+			arena.hubLedsFailing = true
+			log.Printf("Failed to update hub LEDs: %s", err)
+			log.Println(
+				"Hub LEDs: suppressing further failures until they recover. " +
+					"Clear the LED Receiver Address under Setup > Settings to stop trying.",
+			)
+		}
+	} else if arena.hubLedsFailing {
+		arena.hubLedsFailing = false
+		log.Println("Hub LEDs: updating again.")
 	}
 }
 

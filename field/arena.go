@@ -68,6 +68,7 @@ type Arena struct {
 	FieldLights      hardware.FieldLights
 	Leds             ledController
 	hubLedsArtNet    bool
+	hubLedsFailing   bool // true while Update is erroring, so the failure is logged once not 100x/s
 	hubLedFallback   led.Fallback
 	EStopPanels      []hardware.EStopPanel
 	FieldEStop       hardware.FieldEStopPanel

@@ -1,6 +1,11 @@
 package field
 
 import (
+	"bytes"
+	"fmt"
+	"log"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -197,4 +202,58 @@ func TestHubLedProtocolSwitch(t *testing.T) {
 	arena.applyHubLedSettings(arena.EventSettings)
 	_, isSacn = arena.Leds.(*led.Controller)
 	assert.True(t, isSacn, "unticking it should switch back")
+}
+
+// failingLeds is a ledController whose Update fails on demand.
+type failingLeds struct {
+	fail bool
+}
+
+func (f *failingLeds) SetAddress(string) error                { return nil }
+func (f *failingLeds) SetLayout(_, _ []led.FixtureSpec) error { return nil }
+func (f *failingLeds) UseDefaultLayout()                      {}
+func (f *failingLeds) SetMode(_, _ led.Mode)                  {}
+func (f *failingLeds) GetModes() (led.Mode, led.Mode)         { return led.OffMode, led.OffMode }
+func (f *failingLeds) GetPixels() ([64]led.Color, [64]led.Color) {
+	return [64]led.Color{}, [64]led.Color{}
+}
+
+func (f *failingLeds) Update() error {
+	if f.fail {
+		return fmt.Errorf("no route to host")
+	}
+	return nil
+}
+
+// updateHubLeds runs on the arena loop at 100 Hz. Logging every failure buries the journal
+// under a hundred identical lines a second whenever a receiver is unplugged or the address
+// points at hardware that is not there.
+func TestHubLedFailureIsLoggedOncePerSpell(t *testing.T) {
+	arena := setupTestArena(t)
+	leds := &failingLeds{fail: true}
+	arena.Leds = leds
+
+	var logged bytes.Buffer
+	log.SetOutput(&logged)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+
+	for i := 0; i < 50; i++ {
+		arena.updateHubLeds(time.Now())
+	}
+	assert.Equal(t, 1, strings.Count(logged.String(), "Failed to update hub LEDs"),
+		"a sustained failure should be reported once, not once per tick")
+
+	// Recovery is worth a line, and re-arms the report for the next spell.
+	logged.Reset()
+	leds.fail = false
+	arena.updateHubLeds(time.Now())
+	assert.Contains(t, logged.String(), "updating again")
+
+	logged.Reset()
+	leds.fail = true
+	for i := 0; i < 10; i++ {
+		arena.updateHubLeds(time.Now())
+	}
+	assert.Equal(t, 1, strings.Count(logged.String(), "Failed to update hub LEDs"),
+		"a new failure spell should report again")
 }
