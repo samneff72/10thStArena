@@ -156,7 +156,7 @@ func (web *Web) matchPlayWebsocketHandler(w http.ResponseWriter, r *http.Request
 				ws.WriteError(err.Error())
 				continue
 			}
-			web.arena.MuteMatchSounds = args.MuteMatchSounds
+			web.arena.SetMuteMatchSounds(args.MuteMatchSounds)
 		case "startMatch":
 			args := struct {
 				MuteMatchSounds bool
@@ -166,7 +166,7 @@ func (web *Web) matchPlayWebsocketHandler(w http.ResponseWriter, r *http.Request
 				ws.WriteError(err.Error())
 				continue
 			}
-			web.arena.MuteMatchSounds = args.MuteMatchSounds
+			web.arena.SetMuteMatchSounds(args.MuteMatchSounds)
 			err = web.arena.StartMatch()
 			if err != nil {
 				ws.WriteError(err.Error())

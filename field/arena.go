@@ -1612,6 +1612,18 @@ func (arena *Arena) currentViewLocked() string {
 
 // of AUTO and drives both the HUB lighting and the game data sent to driver stations,
 // so a mid-match change would desynchronise them.
+// SetMuteMatchSounds records whether match cues should play.
+//
+// Under the lock like every other mutator: the web handlers set this while Update is
+// reading it on the arena goroutine, through PlaySound. The read side needs no lock of its
+// own -- every PlaySound caller already holds one, and taking it again would deadlock,
+// since Go mutexes are not reentrant.
+func (arena *Arena) SetMuteMatchSounds(mute bool) {
+	arena.mu.Lock()
+	defer arena.mu.Unlock()
+	arena.MuteMatchSounds = mute
+}
+
 func (arena *Arena) SetAutoWinnerMode(mode AutoWinnerMode) error {
 	arena.mu.Lock()
 	defer arena.mu.Unlock()
