@@ -22,3 +22,4 @@ type NoopFieldEStopPanel struct{}
 
 func (n *NoopFieldEStopPanel) State() (StopState, FaultKind) { return StopOK, FaultNone }
 func (n *NoopFieldEStopPanel) Clear()                        {}
+func (n *NoopFieldEStopPanel) Close()                        {}

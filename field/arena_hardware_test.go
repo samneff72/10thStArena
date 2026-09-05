@@ -3,9 +3,9 @@ package field
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/team841/bioarena/game"
 	"github.com/team841/bioarena/hardware"
-	"github.com/stretchr/testify/assert"
 )
 
 // --- teleopShift ---
@@ -265,6 +265,7 @@ type mockFieldEStop struct {
 	liveFault    hardware.FaultKind
 	latched      hardware.StopState
 	latchedFault hardware.FaultKind
+	closed       bool
 }
 
 func (m *mockFieldEStop) State() (hardware.StopState, hardware.FaultKind) {
@@ -273,6 +274,8 @@ func (m *mockFieldEStop) State() (hardware.StopState, hardware.FaultKind) {
 	}
 	return m.latched, m.latchedFault
 }
+
+func (m *mockFieldEStop) Close() { m.closed = true }
 
 func (m *mockFieldEStop) Clear() {
 	if m.live == hardware.StopOK {
@@ -403,4 +406,21 @@ func TestNoopFieldLightsIntegration(t *testing.T) {
 	for _, s := range states {
 		assert.NoError(t, arena.FieldLights.SetState(s))
 	}
+}
+
+// --- field e-stop lifecycle ---
+
+// LoadSettings runs on every settings save, and the kernel gives a GPIO line to one
+// requester at a time. Without releasing the previous panel the second save of a run cannot
+// open the pins, falls back to NoopFieldEStopPanel, and reports StopOK forever -- a field
+// showing a healthy e-stop with nothing watching the button.
+func TestLoadSettingsReleasesThePreviousFieldEStop(t *testing.T) {
+	arena := setupTestArena(t)
+
+	previous := &mockFieldEStop{}
+	arena.FieldEStop = previous
+	assert.Nil(t, arena.LoadSettings())
+
+	assert.True(t, previous.closed, "the previous panel's GPIO lines were never released")
+	assert.NotSame(t, previous, arena.FieldEStop, "the panel should have been rebuilt")
 }

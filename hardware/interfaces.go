@@ -140,6 +140,7 @@ type EStopPanel interface {
 type FieldEStopPanel interface {
 	State() (StopState, FaultKind) // latched condition
 	Clear()                        // reset latch; no-op unless the live reading is StopOK
+	Close()                        // release any hardware; the panel is rebuilt on every settings save
 }
 
 // DefaultDiscrepancyWindow is how long the two channels of an e-stop may

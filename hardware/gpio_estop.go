@@ -70,12 +70,48 @@ func (g *GpioFieldEStopPanel) Clear() {
 	}
 }
 
+// Close releases the GPIO lines.
+//
+// Required because the panel is rebuilt whenever settings are saved, and the kernel gives a
+// line to one requester at a time. Without releasing the old panel first, the second save
+// of a run fails to open the pins, and the arena falls back to NoopFieldEStopPanel -- which
+// reports StopOK forever. The field would show a healthy e-stop with nothing watching the
+// button, which is the one direction this must never fail in.
+//
+// Idempotent, and safe on a single-channel panel where nc is nil. The lines are reached
+// through a type assertion rather than through lineReader, which stays Value()-only so the
+// tests can keep substituting plain fakes.
+func (g *GpioFieldEStopPanel) Close() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	closeLine := func(line lineReader) {
+		if closer, ok := line.(interface{ Close() error }); ok {
+			_ = closer.Close()
+		}
+	}
+	if g.nc != nil {
+		closeLine(g.nc)
+		g.nc = nil
+	}
+	if g.no != nil {
+		closeLine(g.no)
+		g.no = nil
+	}
+}
+
 // read samples both channels and decodes them. Callers must hold g.mu.
 //
 // A read error is a fault immediately rather than being fed through the
 // discrepancy window: an unreadable line is not a button in travel, and
 // holding the previous value would be the one failure mode that hides itself.
 func (g *GpioFieldEStopPanel) read(now time.Time) (StopState, FaultKind) {
+	// A closed panel reads as a fault rather than panicking on the nil line. Nothing should
+	// poll one, but a stop input is the wrong place to find out by crashing -- and reporting
+	// a fault stops the field, where reporting OK would not.
+	if g.no == nil {
+		return StopFault, FaultReadError
+	}
 	noVal, err := g.no.Value()
 	if err != nil {
 		return StopFault, FaultReadError

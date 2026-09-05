@@ -31,6 +31,8 @@ func (m *mockWebFieldEStop) State() (hardware.StopState, hardware.FaultKind) {
 	}
 	return hardware.StopOK, hardware.FaultNone
 }
+func (m *mockWebFieldEStop) Close() {}
+
 func (m *mockWebFieldEStop) Clear() {
 	if !m.pinHeld {
 		m.triggered = false

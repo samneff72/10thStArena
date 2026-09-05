@@ -224,6 +224,15 @@ func (arena *Arena) LoadSettings() error {
 		},
 	)
 
+	// Released before the replacement is opened. LoadSettings runs on every settings save,
+	// and the kernel hands a GPIO line to one requester at a time -- so without this the
+	// second save of a run cannot open the pins, falls through to the warning below, and
+	// installs a NoopFieldEStopPanel that reports StopOK forever. The badge goes green and
+	// nothing is watching the button.
+	if arena.FieldEStop != nil {
+		arena.FieldEStop.Close()
+	}
+
 	if settings.FieldEStopPin != 0 {
 		panel, err := hardware.NewGpioFieldEStopPanel("gpiochip0", settings.FieldEStopNcPin, settings.FieldEStopPin)
 		if err != nil {
