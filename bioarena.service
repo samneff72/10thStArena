@@ -24,10 +24,11 @@ AmbientCapabilities=CAP_NET_ADMIN
 # already configured (e.g. after a service restart).
 ExecStartPre=-/sbin/ip addr add 10.0.100.5/24 dev eth0
 
-# A second address in the access point's subnet. The Vivid-Hosting AP answers on
-# 192.168.69.1 and cannot be moved, so reaching it means holding an address there: it is on
-# the same VLAN as this interface, so this needs no routing and no gateway.
-# Without it the AP is unreachable and its badge never leaves UNKNOWN.
+# A second address in the access point's backup subnet. The Vivid-Hosting AP normally lives
+# at 10.0.100.2, which the address above already reaches -- but it also answers on
+# 192.168.69.1, and that is where it is found after a reset or a failed firmware write.
+# Holding an address there keeps that fallback usable from the field instead of needing a
+# laptop cabled straight to the AP. Same VLAN as this interface, so no routing, no gateway.
 ExecStartPre=-/sbin/ip addr add 192.168.69.5/24 dev eth0
 
 # Routes back to everything the switch routes to us. The driver stations live on subnets

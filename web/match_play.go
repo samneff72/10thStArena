@@ -71,6 +71,10 @@ func (web *Web) matchPlayWebsocketHandler(w http.ResponseWriter, r *http.Request
 		web.arena.ArenaStatusNotifier,
 		web.arena.MatchLoadNotifier,
 		web.arena.MatchTimeNotifier,
+		// Upstream delivers sound cues to the audience display, which this fork does not
+		// have. Without this subscription the notifier fires into nothing and the field is
+		// silent, however the sounds themselves are configured.
+		web.arena.PlaySoundNotifier,
 	)
 
 	// Loop, waiting for commands and responding to them, until the client closes the connection.
@@ -135,6 +139,20 @@ func (web *Web) matchPlayWebsocketHandler(w http.ResponseWriter, r *http.Request
 			if err = ws.WriteNotifier(web.arena.ArenaStatusNotifier); err != nil {
 				log.Println(err)
 			}
+		// Applied the moment the box is toggled, not only at match start. Upstream sets the
+		// flag from the startMatch payload alone, which was survivable while the default was
+		// unmuted -- an explicit cue before the first match of a session still played. This
+		// fork defaults to muted, so without this the checkbox would appear to do nothing
+		// until a match ran, and an abort cue would be silent no matter what it showed.
+		case "setMuteMatchSounds":
+			args := struct {
+				MuteMatchSounds bool
+			}{}
+			if err = mapstructure.Decode(data, &args); err != nil {
+				ws.WriteError(err.Error())
+				continue
+			}
+			web.arena.MuteMatchSounds = args.MuteMatchSounds
 		case "startMatch":
 			args := struct {
 				MuteMatchSounds bool

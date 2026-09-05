@@ -33,6 +33,42 @@ func TestTeleopShiftBoundaries(t *testing.T) {
 	}
 }
 
+// --- shiftChangeSounds ---
+
+// The cue marks the four HUB handovers and nothing else. The shifts that do not sound are
+// the point of the test: each already has a cue of its own, and stacking two on one moment
+// is what this excludes.
+func TestShiftChangeSoundsOnlyOnHandovers(t *testing.T) {
+	for _, shift := range []game.Shift{game.Shift1, game.Shift2, game.Shift3, game.Shift4} {
+		assert.True(t, shiftChangeSounds(shift), "shift %d should sound", shift)
+	}
+	for _, shift := range []game.Shift{
+		game.ShiftAuto,       // "start"
+		game.ShiftTransition, // "resume"
+		game.ShiftEndgame,    // "warning"
+		game.ShiftPostMatch,  // "end"
+		game.ShiftCount,      // not a shift at all
+	} {
+		assert.False(t, shiftChangeSounds(shift), "shift %d should be silent", shift)
+	}
+}
+
+// The cue is driven from the lighting transition, so the boundaries it fires on must be the
+// ones teleopShift produces. Walking the teleop second by second proves there are exactly
+// four, and that they sit where the lights change rather than near them.
+func TestShiftChangeSoundsMatchLightingBoundaries(t *testing.T) {
+	var boundaries []int
+	previous := teleopShift(200) // before the first boundary
+	for remaining := 200; remaining >= 0; remaining-- {
+		current := teleopShift(remaining)
+		if current != previous && shiftChangeSounds(current) {
+			boundaries = append(boundaries, remaining)
+		}
+		previous = current
+	}
+	assert.Equal(t, []int{130, 105, 80, 55}, boundaries)
+}
+
 // --- shiftWarning ---
 
 func TestShiftWarningWindows(t *testing.T) {

@@ -35,7 +35,7 @@ except ImportError:  # pragma: no cover - platform guard
 
 DEFAULT_ADDRESS = "10.0.100.3"
 DEFAULT_MASK = "255.255.255.0"
-DEFAULT_HOSTNAME = "FieldSwitch"
+DEFAULT_HOSTNAME = "bioSwitch"
 READ_TIMEOUT_SEC = 5
 
 # "dir /recursive" walks the whole flash, and "write memory" erases and rewrites it,

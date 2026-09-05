@@ -98,7 +98,7 @@ the override. The wrong one does not fail informatively — the Pi reports
 **Deploy**
 
 ```bash
-./deploy-fms.sh 10.0.100.5
+./deploy-fms.sh 192.168.1.42
 ```
 
 That is the whole thing. It builds, creates the `bioarena` service account and
@@ -112,17 +112,38 @@ always a reasonable answer. A failed step stops the run and names itself, leavin
 whatever it was running before; a service that starts and then dies prints its last twenty
 log lines.
 
+**That address is an example, and it is not the Pi's field address.** Pass whatever the Pi
+answers on from your build machine right now — normally a bench or workshop network the two
+share. `10.0.100.5` is what `bioarena.service` gives the Pi on `eth0` once it is wired into
+the field, so driver stations can find it; it is not a route your laptop has, and your build
+machine has no reason to join the field network at all.
+
+Finding a Pi on the bench network, easiest first:
+
+```bash
+ssh admin@raspberrypi.local
+```
+
+That is mDNS, using the hostname set when the card was flashed — worth setting per Pi, since
+two of them answering to `raspberrypi.local` is a coin flip over which one you just deployed
+to. Otherwise run `hostname -I` on the Pi if it has a screen, or read the bench router's
+client list.
+
 Add your login user if it is not `admin`:
 
 ```bash
-./deploy-fms.sh 10.0.100.5 sam
+./deploy-fms.sh 192.168.1.42 sam
 ```
 
 Panels take the alliance as well — see [Field hardware](#field-hardware):
 
 ```bash
-./deploy-panel.sh 10.0.100.11 red
+./deploy-panel.sh 192.168.1.43 red
 ```
+
+The two arguments are unrelated addresses: the first is where the panel answers now, the
+alliance is what writes its static field address (`10.0.100.11` red, `10.0.100.12` blue)
+into the service file.
 
 The service runs as a system account with no login, so a field controller does not depend
 on which username the SD card was flashed with. It installs to `/opt/bioarena` and writes
@@ -163,7 +184,7 @@ After that a deploy is one command and no prompts.
 Confirm what is installed with `systemctl cat bioarena`. Before starting the binary it:
 
 - assigns `10.0.100.5/24` to `eth0` — the address driver stations are hardcoded to look for
-- assigns `192.168.69.5/24` as well, so the access point is reachable where it lives
+- assigns `192.168.69.5/24` as well, so the access point stays reachable on its backup address
 - routes `10.0.0.0/8` and `172.16.0.0/12` via the switch, so replies to driver stations on
   team and staging subnets have a way back
 
@@ -199,7 +220,7 @@ wireless** through their own radios.
          │                               │              │
  ┌───────┴────────────┐      ┌───────────┴──────┐  ┌────┴──────────────┐
  │ DS laptops         │      │ Raspberry Pi 4   │  │ VH-113 AP         │
- │ one per station    │      │ FMS 10.0.100.5   │  │ 192.168.69.1      │
+ │ one per station    │      │ FMS 10.0.100.5   │  │ 10.0.100.2        │
  │ 10.TE.AM.20-.199   │      │ and 192.168.69.5 │  └────┬──────────────┘
  │ (DHCP from switch) │      └──────────────────┘       │
  └────────────────────┘                                 │ WiFi, one SSID
@@ -279,15 +300,15 @@ password, so nothing can reach it over the network — that part is console-only
 definition. [docs/switch-bootstrap.py](docs/switch-bootstrap.py) does it without anyone
 composing IOS:
 
-```bash
-scp docs/switch-bootstrap.py <USER>@10.0.100.5:~/
-```
+`deploy-fms.sh` already put it on the Pi, so this runs there with a USB console cable
+between the Pi and the switch's console port:
 
 ```bash
-sudo python3 ~/switch-bootstrap.py --password <SWITCH_PASSWORD> --hostname RichmondSwitch
+sudo python3 ~/switch-bootstrap.py --password <SWITCH_PASSWORD>
 ```
 
-That sets the management address (`10.0.100.3` by default), the enable and VTY passwords to
+That names the switch `bioSwitch`, sets the management address (`10.0.100.3` by default),
+the enable and VTY passwords to
 the same value, enables Telnet, points the boot loader at the installed IOS image so the
 switch stops halting at the `switch:` prompt, and saves. Run it again any time; it changes
 nothing the second time.
@@ -368,12 +389,10 @@ library, so it needs no packages. That matters on older Raspbian releases, whose
 repositories have moved to `archive.debian.org` and can no longer install `screen` or
 `minicom` without repointing the sources list.
 
-```bash
-scp docs/console.py <USER>@10.0.100.5:~/
-```
+`deploy-fms.sh` copies it to the Pi on every deploy, so it is already there:
 
 ```bash
-ssh <USER>@10.0.100.5
+ssh <USER>@<PI_ADDRESS>
 python3 ~/console.py            # /dev/ttyUSB0 at 9600 8N1; Ctrl-] to exit
 python3 ~/console.py --list     # if unsure which device the cable is
 ```
@@ -417,8 +436,15 @@ Within a site the last two octets never change, so every field is wired and docu
 identically and only the second octet identifies which one you are on. Record the
 assignment for each deployment in [docs/sites/](docs/sites).
 
-Give the switch a hostname naming the site — `<Site>Switch` — so a console session makes
-it obvious which field you are connected to.
+The switch is named `bioSwitch` by the bootstrap script. Nothing reads the hostname —
+bioarena reaches the switch by address over Telnet — so it exists only to tell you what you
+are consoled into. Running more than one field is the case where that is worth overriding,
+since the last two octets are identical at every field and the prompt is the quickest way to
+tell them apart:
+
+```bash
+sudo python3 ~/switch-bootstrap.py --password <SWITCH_PASSWORD> --hostname bioSwitch2
+```
 
 Set an enable password when prompted — this is the password bioarena uses to authenticate over Telnet. Enter it in **Setup > Settings > Switch Password**.
 
@@ -444,28 +470,33 @@ Specifically, bioarena needs plain HTTP on port 80 serving `POST /configuration`
 the **field firmware**, not the team-radio firmware — a radio in team mode serves no such
 API and sits at `10.TE.AM.1` for whichever team it was last provisioned for.
 
-**The AP lives at `192.168.69.1` and stays there.** The VH-113 answers on that address and
-it is not configurable, so the field comes to it rather than the other way round. Two
-things carry an address in its subnet, both applied for you:
+**The AP lives at `10.0.100.2`**, on the management subnet alongside the Pi and the switch.
+That is what goes in **AP Address** under Arena → Settings, and it needs nothing special:
+the Pi's own `10.0.100.5` is in the same subnet, so they are neighbours.
 
-- The Pi, via `ExecStartPre` in `bioarena.service` — `192.168.69.5/24` on `eth0`. This is
-  the one that matters, since the Pi is what talks to the AP. It needs no routing: the AP
-  is on the same VLAN, so they are neighbours.
+**It also answers on `192.168.69.1`, as a backup.** That is where it turns up after a reset
+or a failed firmware write, so the field deliberately carries that subnet too — otherwise an
+AP that has dropped back is unreachable from the field entirely and recovering it means
+cabling a laptop straight to it. Two things hold an address there, both applied for you:
+
+- The Pi, via `ExecStartPre` in `bioarena.service` — `192.168.69.5/24` on `eth0`. No routing
+  needed; the AP is on the same VLAN.
 - The switch, via a secondary address on `Vlan1` — `192.168.69.2/24`, pushed with the rest
-  of the baseline. This lets anything else on the field reach the AP, and gives the AP a
-  gateway if it ever wants one.
+  of the baseline. This lets anything else on the field reach a fallen-back AP, and gives it
+  a gateway if it ever wants one.
 
-Without an address in that subnet the AP is simply unreachable: nothing has an interface
+Without an address in that subnet a reset AP is simply unreachable: nothing has an interface
 there, so there is nothing to ARP for and nothing to route through, and the badge sits at
 `UNKNOWN` however healthy the AP is.
 
 **First-time VH-113 setup**
 
-1. Laptop straight into the AP, static `192.168.69.100/24`, browse `http://192.168.69.1`.
+1. Laptop straight into the AP, static `192.168.69.100/24`, browse `http://192.168.69.1` —
+   the backup address, which is where a factory-fresh unit answers.
 2. Confirm or flash the field-mode image, following Vivid Hosting's own instructions.
 3. Set the radio channel. It must match **AP Channel** under Arena → Settings, which is
    what gets pushed on every match load.
-4. Put **AP Address** in Arena → Settings to `192.168.69.1`.
+4. Put **AP Address** in Arena → Settings to `10.0.100.2`.
 
 **The AP password is normally blank.** The practice firmware exposes no API token, and
 that is a supported configuration rather than a workaround: bioarena adds the
@@ -473,16 +504,16 @@ that is a supported configuration rather than a workaround: bioarena adds the
 means unauthenticated calls, which is what this firmware expects. Confirm from the Pi:
 
 ```bash
-curl -s http://192.168.69.1/status
+curl -s http://10.0.100.2/status
 ```
 
 JSON back means leave **AP Password** empty. A `401` means this build does want a token,
 and on Vivid's field images that is usually the web UI's admin password. No answer at all
-means the address in that subnet is missing — check `ip addr show eth0` for
-`192.168.69.5`.
+means the Pi cannot reach it — check `ip addr show eth0` for `10.0.100.5`, and try the
+backup address `http://192.168.69.1` in case the AP has reset.
 
-**Enter the address without a scheme.** `192.168.69.1`, not `http://192.168.69.1` — the
-code prepends `http://`, so a typed prefix produces `http://http://192.168.69.1` and every
+**Enter the address without a scheme.** `10.0.100.2`, not `http://10.0.100.2` — the
+code prepends `http://`, so a typed prefix produces `http://http://10.0.100.2` and every
 poll fails.
 
 When a match loads, the controller pushes one SSID + WPA2 key per team (six total). The
@@ -499,7 +530,8 @@ The Pi must be able to reach:
 
 | Destination | Protocol | Port | How |
 |---|---|---|---|
-| Field AP, `192.168.69.1` | HTTP | 80 | Second address on `eth0`, same VLAN |
+| Field AP, `10.0.100.2` | HTTP | 80 | Management subnet, same VLAN |
+| Field AP backup, `192.168.69.1` | HTTP | 80 | Second address on `eth0`, same VLAN |
 | Switch, `10.0.100.3` | Telnet | 23 | Same subnet as the FMS address |
 | Team subnets, `10.TE.AM.0/24` | TCP 1750, UDP 1160 | | Routed via the switch |
 | Staging subnets, `172.16.<vlan>.0/24` | TCP 1750 | | Routed via the switch |
@@ -520,8 +552,8 @@ ExecStartPre=-/sbin/ip route add 172.16.0.0/12 via 10.0.100.3 dev eth0
 Test from the Pi:
 
 ```bash
-ping 192.168.69.1                 # the access point
-curl -s http://192.168.69.1/status
+ping 10.0.100.2                   # the access point
+curl -s http://10.0.100.2/status
 ip route get 172.16.20.20         # a staging address: should route via 10.0.100.3
 ```
 
@@ -538,41 +570,29 @@ line up the switch's log against bioarena's.
 
 The field controller is the only sensible source, so it serves time to everything else.
 
-Part of the first deploy, not an optional extra — it needs internet, so it has to happen
-before the Pi joins the field network.
+**Nothing to do by hand.** Both halves are cooked into the scripts, for the same reason the
+switch's VLANs are: a setup step that lives only in a document is a setup step that is
+eventually skipped on a fresh Pi.
 
-**On the Pi.** Raspberry Pi OS ships `systemd-timesyncd`, which is a client only and cannot
-serve; there is no setting that changes this. Chrony can, and Debian's package replaces
-timesyncd rather than running alongside it, since two daemons steering one clock is worse
-than either alone:
+**On the Pi**, `deploy-fms.sh` installs chrony and lays down the drop-in. Raspberry Pi OS
+ships `systemd-timesyncd`, which is a client only and cannot serve; there is no setting that
+changes this. Debian's chrony package replaces timesyncd rather than running alongside it,
+since two daemons steering one clock is worse than either alone.
 
-```bash
-sudo apt install chrony
-```
+The drop-in ([docs/chrony-bioarena.conf](docs/chrony-bioarena.conf)) carries
+`local stratum 10`, which is the part that matters: chrony otherwise refuses to answer while
+it is unsynchronised, which on an isolated field is always. Stratum 10 is deliberately poor,
+so a real upstream source wins if the Pi ever reaches one.
 
-```bash
-scp docs/chrony-bioarena.conf <USER>@10.0.100.5:~/
-```
+`apt` needs internet, which a Pi already on the field does not have. **Deploy once with the
+Pi online before wiring it into the field.** If the install cannot reach a mirror the deploy
+warns rather than failing, puts the drop-in in place anyway, and finishes — re-run it once
+the Pi has internet and that step completes.
 
-```bash
-sudo mv ~/chrony-bioarena.conf /etc/chrony/conf.d/bioarena.conf
-sudo systemctl restart chrony
-```
-
-The drop-in carries `local stratum 10`, which is the part that matters: chrony otherwise
-refuses to answer while it is unsynchronised, which on an isolated field is always. Stratum
-10 is deliberately poor, so a real upstream source wins if the Pi ever reaches one.
-
-**On the switch.**
-
-```
-configure terminal
-ntp server 10.0.100.5
-end
-```
-
-Then `write memory`. Confirm with `show ntp associations` after a few minutes — the switch
-polls slowly, so it is not instant.
+**On the switch**, bioarena pushes `ntp server 10.0.100.5` as part of the baseline it applies
+on its first configuration of a run, and saves it with `write memory` alongside everything
+else. Confirm with `show ntp associations` after a few minutes — the switch polls slowly, so
+it is not instant.
 
 **This makes the field's clocks consistent, not correct.** Correct requires the Pi reaching
 a real NTP server at some point, or being set by hand:
@@ -634,7 +654,7 @@ copy them to the Pi.
 Or pull them off over SSH:
 
 ```bash
-scp <USER>@10.0.100.5:/opt/bioarena/logs/\*.csv ./
+scp <USER>@<PI_ADDRESS>:/opt/bioarena/logs/\*.csv ./
 ```
 
 The directory grows with every match. Clear it periodically:
@@ -818,14 +838,15 @@ Build and deploy:
 ./build-pi.sh          # produces estop-panel-pi alongside bioarena-pi
 ```
 
-Deploy it the same way as the field controller, with the alliance:
+Deploy it the same way as the field controller, with the alliance — addresses again being
+wherever each panel answers from your build machine, not its field address:
 
 ```bash
-./deploy-panel.sh 10.0.100.11 red
+./deploy-panel.sh 192.168.1.43 red
 ```
 
 ```bash
-./deploy-panel.sh 10.0.100.12 blue
+./deploy-panel.sh 192.168.1.44 blue
 ```
 
 The alliance is required because a panel Pi is not interchangeable: the script writes that

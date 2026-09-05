@@ -44,18 +44,33 @@ const (
 // anything.
 var switchTrunkInterfaces = [2]string{"GigabitEthernet0/7", "GigabitEthernet0/8"}
 
+// dmxHubPort is the access port for the field's DMX/Art-Net gateway. It carries VLAN 1, the
+// same subnet as the FMS Pi's 10.0.100.5, so the gateway can reach the FMS directly with no
+// routing or DHCP pool of its own -- it is given a static address in that subnet from
+// Arena -> Settings -> LEDs, the same way the Pi's address is static rather than leased.
+//
+// Nothing on the field needs to reach the gateway; bioarena only ever sends to it. So unlike
+// a driver station port, this does not need a VLAN, a DHCP pool, or the shut/reopen cycling
+// dsPortInterfaces gets -- it is set once by the baseline and left alone.
+const dmxHubPort = "GigabitEthernet0/9"
+
 // vlanNames label the VLAN database, so "show vlan brief" on the switch reads as the field
 // rather than as VLAN0010 through VLAN0060.
 var vlanNames = [6]string{"Red1", "Red2", "Red3", "Blue1", "Blue2", "Blue3"}
 
-// The Vivid-Hosting access point answers on 192.168.69.1 and cannot be moved, so the field
-// VLAN carries that subnet as a secondary alongside the management one. Without it nothing
-// on the field can reach the AP: the switch has no interface in its subnet, so there is
-// nothing to route through and nothing to ARP for.
+// The Vivid-Hosting access point lives at 10.0.100.2, on the management subnet, which is
+// where bioarena talks to it and what the AP Address setting holds. It also answers on
+// 192.168.69.1 as a backup, and that is where it turns up after a reset or a failed
+// firmware write.
 //
-// The Pi also holds an address here, set by bioarena.service -- that is the one that
-// actually matters, since the Pi is what talks to the AP. This secondary lets anything
-// else on the field reach it too, and gives the AP a gateway if it ever needs one.
+// The field VLAN carries the backup subnet as a secondary so that fallback stays reachable
+// from the field. Without it an AP that has dropped back is unreachable by everything here
+// -- the switch has no interface in that subnet, so there is nothing to route through and
+// nothing to ARP for -- and recovering it means cabling a laptop straight to the AP with a
+// hand-set static address.
+//
+// The Pi holds an address there too, set by bioarena.service. This secondary lets anything
+// else on the field reach it as well, and gives the AP a gateway if it ever needs one.
 const (
 	apSubnetMask          = "255.255.255.0"
 	switchApSubnetAddress = "192.168.69.2"
@@ -411,6 +426,14 @@ func portNumericSuffix(name string) string {
 func baselineCommands() string {
 	command := "ip routing\n"
 
+	// Point the switch at the field controller for time. Nothing on a practice field has a
+	// battery-backed clock -- a Catalyst comes up believing it is 2004, and with no route to
+	// the internet it never corrects itself. The Pi serves time via chrony (deploy-fms.sh
+	// installs it), so this is the other half of that: without it the switch's log
+	// timestamps disagree with bioarena's by years, and the moment that costs you is the one
+	// where a match went wrong and you are trying to line the two up.
+	command += fmt.Sprintf("ntp server %s\n", ServerIpAddress)
+
 	// Secondary, so it sits alongside the management address the bootstrap script set as
 	// the primary. A secondary with no primary is rejected, which is why this is not the
 	// place the field's own address gets configured.
@@ -446,6 +469,11 @@ func baselineCommands() string {
 			port, allowed,
 		)
 	}
+
+	command += fmt.Sprintf(
+		"interface %s\nswitchport mode access\nswitchport access vlan 1\nno shutdown\nexit\n",
+		dmxHubPort,
+	)
 
 	return command
 }

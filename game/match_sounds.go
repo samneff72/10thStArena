@@ -14,6 +14,11 @@ type MatchSound struct {
 
 // List of sounds and how many seconds into the match they are played. A negative time indicates that the sound can only
 // be triggered explicitly.
+//
+// "shift_change" is deliberately absent. Upstream schedules it here, at four timestamps
+// computed from the shift constants. Bioarena sounds it from the lighting transition in
+// field/arena.go instead, so the cue and the HUB lights come from one computed boundary
+// rather than two that could disagree. Adding it back here would play it twice.
 var MatchSounds []*MatchSound
 
 func UpdateMatchSounds() {
@@ -34,7 +39,7 @@ func UpdateMatchSounds() {
 			float64(MatchTiming.AutoDurationSec + MatchTiming.PauseDurationSec),
 		},
 		{
-			"warning_sonar",
+			"warning",
 			"wav",
 			float64(
 				MatchTiming.AutoDurationSec + MatchTiming.PauseDurationSec + MatchTiming.TeleopDurationSec -

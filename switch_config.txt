@@ -36,7 +36,7 @@ service timestamps debug datetime msec
 service timestamps log datetime msec
 no service password-encryption
 !
-hostname ChezySwitch
+hostname bioSwitch
 !
 boot-start-marker
 boot system flash:c3560cx-universalk9-mz.152-7.E/c3560cx-universalk9-mz.152-7.E.bin
@@ -49,7 +49,7 @@ ip routing
 !
 ! Field network. .1-.125 is excluded so the statically addressed field devices -- the Pi at
 ! .5, this switch at .3, the access point at .2, the Art-Net node at .100 -- can never
-! collide with a lease.
+! collide with a lease. The wide exclusion is upstream's and is kept as-is.
 ip dhcp excluded-address 10.0.100.1 10.0.100.125
 ip dhcp excluded-address 10.0.100.200 10.0.100.225
 !
@@ -182,10 +182,10 @@ interface Vlan60
  ip address 10.0.6.4 255.255.255.0
  ip access-group DS-FMS in
 !
-! Management, and the access point's fixed subnet as a secondary. The VH-113 answers on
-! 192.168.69.1 and cannot be moved, so the field carries that subnet rather than the other
-! way round; the Pi holds 192.168.69.5 on the same VLAN, which is the address that actually
-! talks to it.
+! Management, and the access point's backup subnet as a secondary. The VH-113 lives at
+! 10.0.100.2 on this subnet, which is what bioarena talks to -- but it also answers on
+! 192.168.69.1, and that is where it turns up after a reset. Carrying that subnet here keeps
+! the fallback reachable from the field; the Pi holds 192.168.69.5 on the same VLAN.
 interface Vlan1
  ip address 10.0.100.3 255.255.255.0
  ip address 192.168.69.2 255.255.255.0 secondary

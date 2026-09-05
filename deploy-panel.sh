@@ -1,13 +1,26 @@
 #!/usr/bin/env bash
 # Deploy the e-stop panel service to an alliance panel Pi.
 #
-#   ./deploy-panel.sh 10.0.100.11 red
-#   ./deploy-panel.sh 10.0.100.12 blue
-#   ./deploy-panel.sh 10.0.100.11 red admin   # if you log in as something other than admin
+#   ./deploy-panel.sh 192.168.1.43 red
+#   ./deploy-panel.sh 192.168.1.44 blue
+#   ./deploy-panel.sh 192.168.1.43 red admin   # if you log in as something other than admin
+#
+# Two different addresses are in play here, and confusing them is the easy mistake. The
+# argument is where the panel Pi answers FROM THIS MACHINE right now -- a bench network the
+# two share, and nothing to do with the field. The alliance is what decides the static field
+# address written into its service file, 10.0.100.11 for red and .12 for blue.
 #
 # The alliance is required because a panel Pi is not interchangeable: it takes the static
 # address the field controller expects to poll for that alliance, and the wrong one gives
 # two panels the same address and a field whose e-stops answer for the wrong side.
+#
+# Finding a panel on the bench network, easiest first:
+#   ssh admin@raspberrypi.local     mDNS, using the hostname set when the card was flashed
+#   hostname -I                     on the Pi, if it has a screen
+#   or the bench router's client list
+#
+# Flashing both panels with distinct hostnames is worth the minute it costs -- two Pis both
+# answering to raspberrypi.local is a coin flip over which one you just deployed to.
 #
 # Does everything, every time: builds, creates the service account if this Pi has never
 # been deployed to, puts it in the gpio group, writes the alliance's address into the
@@ -24,11 +37,16 @@ LOGIN="${3:-admin}"
 usage() {
 	echo "Usage: ./deploy-panel.sh <panel-pi-address> <red|blue> [login-user]" >&2
 	echo "" >&2
-	echo "Examples: ./deploy-panel.sh 10.0.100.11 red" >&2
-	echo "          ./deploy-panel.sh 10.0.100.12 blue" >&2
+	echo "Examples: ./deploy-panel.sh 192.168.1.43 red" >&2
+	echo "          ./deploy-panel.sh 192.168.1.44 blue" >&2
 	echo "" >&2
-	echo "Red panels take 10.0.100.11, blue panels 10.0.100.12. Those are the addresses" >&2
-	echo "the field controller polls, set under Arena > Settings." >&2
+	echo "The address is where the panel answers from this machine right now -- normally a" >&2
+	echo "bench network you share with it. Find it with ssh admin@raspberrypi.local, or" >&2
+	echo "'hostname -I' on the Pi, or the bench router's client list." >&2
+	echo "" >&2
+	echo "The alliance is separate: it writes the static FIELD address into the service" >&2
+	echo "file -- red 10.0.100.11, blue 10.0.100.12 -- which is what the field controller" >&2
+	echo "polls, set under Arena > Settings." >&2
 	exit 2
 }
 

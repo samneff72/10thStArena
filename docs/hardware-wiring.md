@@ -343,11 +343,15 @@ Run on your development machine:
 ./build-pi.sh
 ```
 
-Then copy to each panel Pi:
+Then deploy to each panel Pi, giving the alliance:
 
 ```bash
-scp estop-panel-pi <USER>@10.0.100.11:/opt/estop-panel/estop-panel
+./deploy-panel.sh <PANEL_ADDRESS> red
 ```
+
+`<PANEL_ADDRESS>` is wherever that Pi answers from your development machine — normally a
+bench network the two share, not the field. The alliance is the separate thing that writes
+the static field address (`10.0.100.11` red, `10.0.100.12` blue) into the service file.
 
 See [README.md](../README.md) for the full deployment steps, including the service account and systemd unit.
 

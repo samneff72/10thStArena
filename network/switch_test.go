@@ -222,9 +222,15 @@ func TestBaselineCommands(t *testing.T) {
 
 	assert.Contains(t, command, "ip routing\n")
 
-	// The access point answers on 192.168.69.1 and cannot be moved, so the field VLAN
-	// carries its subnet as a secondary. Without an interface in that subnet there is
-	// nothing to route through and nothing to ARP for, and the AP is unreachable.
+	// The switch takes its time from the field controller. Without this its log timestamps
+	// sit years away from bioarena's, since a Catalyst boots believing it is 2004 and an
+	// isolated field gives it no way to find out otherwise.
+	assert.Contains(t, command, "ntp server 10.0.100.5\n")
+
+	// The access point normally sits at 10.0.100.2, but falls back to 192.168.69.1 after a
+	// reset, so the field VLAN carries that subnet as a secondary. Without an interface
+	// there, an AP that has dropped back is unreachable from the field entirely: nothing to
+	// route through and nothing to ARP for.
 	assert.Contains(
 		t,
 		command,
@@ -258,6 +264,15 @@ func TestBaselineCommands(t *testing.T) {
 	// A 3560-CX speaks only 802.1Q and rejects the encapsulation command that older
 	// platforms require before "switchport mode trunk" is accepted.
 	assert.NotContains(t, command, "encapsulation")
+
+	// The DMX/Art-Net gateway is an access port on VLAN 1, the FMS Pi's own subnet, so it
+	// can reach the FMS directly. Unlike a driver station port it carries no VLAN of its
+	// own and is never shut and reopened, since nothing else on the field needs to reach it.
+	assert.Contains(
+		t,
+		command,
+		"interface GigabitEthernet0/9\nswitchport mode access\nswitchport access vlan 1\nno shutdown\n",
+	)
 }
 
 // The baseline goes on with the first configuration of a run, and is saved -- so a power

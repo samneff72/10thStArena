@@ -128,6 +128,9 @@ func NewArena(dbPath string) (*Arena, error) {
 	arena.Leds = newLedController(false)
 	arena.EStopPanels = []hardware.EStopPanel{}
 	arena.FieldEStop = &hardware.NoopFieldEStopPanel{}
+	// Unmuted, matching the unchecked box on Match Play. A field that is silent until
+	// someone finds a checkbox reads as a field whose sounds are broken.
+	arena.MuteMatchSounds = false
 
 	arena.AllianceStations = make(map[string]*AllianceStation)
 	arena.AllianceStations["R1"] = new(AllianceStation)
@@ -394,6 +397,9 @@ func (arena *Arena) AbortMatch() error {
 		arena.PlaySound("abort")
 	}
 	arena.MatchState = PostMatch
+	// Withdrawn with the match, for the same reason it is withheld until teleop: see the
+	// PostMatch transition in Update.
+	arena.GameData = ""
 	arena.matchAborted = true
 	return nil
 }
@@ -412,6 +418,7 @@ func (arena *Arena) ResetMatch() error {
 	arena.AllianceStations["B1"].Bypass.Store(false)
 	arena.AllianceStations["B2"].Bypass.Store(false)
 	arena.AllianceStations["B3"].Bypass.Store(false)
+	// Back to unmuted, matching the unchecked box a reloaded Match Play page will show.
 	arena.MuteMatchSounds = false
 	return nil
 }
@@ -551,6 +558,12 @@ func (arena *Arena) Update() {
 		enabled = true
 		if matchTimeSec >= game.GetDurationToTeleopEnd().Seconds() {
 			arena.MatchState = PostMatch
+			// Game data belongs to the match that is now over. Left set, it outlives the
+			// match: a driver station connecting during PostMatch has SentGameData "" and
+			// so is sent the previous match's AUTO winner the moment it appears, and a new
+			// driver station reads it from every control packet until someone resets. The
+			// value is only meant to exist between the close of AUTO and the end of teleop.
+			arena.GameData = ""
 			auto = false
 			enabled = false
 			sendDsPacket = true
@@ -615,6 +628,14 @@ func (arena *Arena) Update() {
 
 	// Notify FieldLights driver on any state or sub-phase change.
 	if ls := arena.computeLightingState(matchTimeSec); ls != arena.lastLightingState {
+		// The shift cue is sounded from here rather than from game.MatchSounds so that it
+		// cannot drift from the lights: both come from the same computed transition, on the
+		// same tick. Upstream schedules it by timestamp instead, which works because its
+		// shift boundaries and its sound times are read from the same constants; bioarena
+		// derives the boundaries through teleopShift, so a second schedule could disagree.
+		if ls.Shift != arena.lastLightingState.Shift && shiftChangeSounds(ls.Shift) {
+			arena.PlaySound("shift_change")
+		}
 		if err := arena.FieldLights.SetState(ls); err != nil {
 			log.Printf("FieldLights.SetState: %v", err)
 		}
@@ -988,23 +1009,6 @@ func (arena *Arena) handlePlcInputOutput() {
 		arena.Plc.SetStackLights(!redAllianceReady, !blueAllianceReady, false, true)
 	}
 
-	// Handle the truss lights.
-	if arena.MatchState == AutoPeriod || arena.MatchState == PausePeriod || arena.MatchState == TeleopPeriod {
-		warningSequenceActive, lights := trussLightWarningSequence(arena.MatchTimeSec())
-		if warningSequenceActive {
-			arena.Plc.SetTrussLights(lights, lights)
-		} else {
-			arena.Plc.SetTrussLights([3]bool{true, true, true}, [3]bool{true, true, true})
-		}
-	} else {
-		matchStartTime := arena.MatchStartTime
-		currentTime := time.Now()
-		teleopGracePeriod := matchStartTime.Add(game.GetDurationToTeleopEnd() + game.TeleopGracePeriodSec*time.Second)
-		inGracePeriod := arena.MatchState == PostMatch && currentTime.Before(teleopGracePeriod) && !arena.matchAborted
-		arena.Plc.SetTrussLights(
-			[3]bool{inGracePeriod, inGracePeriod, inGracePeriod}, [3]bool{inGracePeriod, inGracePeriod, inGracePeriod},
-		)
-	}
 }
 
 // handleTeamStop applies both stop kinds at once. The PLC path reports them
@@ -1164,29 +1168,6 @@ func (arena *Arena) recoverMissingDriverStations(links [6]bool) {
 			}
 		}(i, station)
 	}
-}
-
-// trussLightWarningSequence generates the sequence of truss light states during the "sonar ping" warning sound. It
-// returns true if the sequence is active, and an array of booleans indicating the state of each truss light.
-func trussLightWarningSequence(matchTimeSec float64) (bool, [3]bool) {
-	stepTimeSec := 0.2
-	sequence := []int{1, 2, 3, 2, 1, 2, 3, 0, 0, 1, 2, 3, 2, 1, 2, 3, 0, 0}
-	startTime := float64(
-		game.MatchTiming.WarmupDurationSec + game.MatchTiming.AutoDurationSec + game.MatchTiming.PauseDurationSec +
-			game.MatchTiming.TeleopDurationSec - game.MatchTiming.WarningRemainingDurationSec,
-	)
-	lights := [3]bool{false, false, false}
-
-	if matchTimeSec < startTime {
-		// The sequence is not active yet.
-		return false, lights
-	}
-
-	step := int((matchTimeSec - startTime) / stepTimeSec)
-	if step < len(sequence) && sequence[step] > 0 {
-		lights[sequence[step]-1] = true
-	}
-	return step < len(sequence), lights
 }
 
 // EnterFreePractice transitions the arena from PreMatch into FreePractice mode.
@@ -1539,6 +1520,23 @@ func teleopShift(remaining int) game.Shift {
 		return game.Shift4
 	default:
 		return game.ShiftEndgame
+	}
+}
+
+// shiftChangeSounds reports whether entering the given shift should sound the change cue.
+//
+// The four HUB handovers only. Entering ShiftTransition is teleop beginning, which "resume"
+// already marks, and ShiftEndgame has "warning" three seconds ahead of it; sounding
+// those again would stack two cues on one moment. ShiftAuto and ShiftPostMatch are match
+// start and end, covered by "start" and "end".
+//
+// That leaves Shift1 through Shift4 -- the same four boundaries shiftWarning anticipates.
+func shiftChangeSounds(shift game.Shift) bool {
+	switch shift {
+	case game.Shift1, game.Shift2, game.Shift3, game.Shift4:
+		return true
+	default:
+		return false
 	}
 }
 

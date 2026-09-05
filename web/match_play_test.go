@@ -121,7 +121,12 @@ func TestMatchPlayWebsocketCommands(t *testing.T) {
 	ws.Write("clearMatch", nil)
 	assert.Contains(t, readWebsocketError(t, ws), "cannot clear match while it is in progress")
 	ws.Write("abortMatch", nil)
-	readWebsocketType(t, ws, "arenaStatus")
+	// Two messages now, and in either order: the status change is written by this handler
+	// while the abort cue comes from the notifier goroutine. Match Play carries sounds in
+	// this fork, since there is no audience display to carry them.
+	aborted := readWebsocketMultiple(t, ws, 2)
+	assert.Contains(t, aborted, "arenaStatus")
+	assert.Contains(t, aborted, "playSound")
 	assert.Equal(t, field.PostMatch, web.arena.MatchState)
 	ws.Write("clearMatch", nil)
 	readWebsocketType(t, ws, "matchLoad")
@@ -218,7 +223,11 @@ func TestMatchPlayWebsocketClearMatchPreservesTeams(t *testing.T) {
 	ws.Write("startMatch", nil)
 	readWebsocketType(t, ws, "arenaStatus")
 	ws.Write("abortMatch", nil)
-	readWebsocketType(t, ws, "arenaStatus")
+	// The status change and the abort cue, in either order -- see the note in
+	// TestMatchPlayWebsocketCommands.
+	aborted := readWebsocketMultiple(t, ws, 2)
+	assert.Contains(t, aborted, "arenaStatus")
+	assert.Contains(t, aborted, "playSound")
 	assert.Equal(t, field.PostMatch, web.arena.MatchState)
 
 	// Clear — team assignments must survive.

@@ -92,12 +92,6 @@ func (plc *FakePlc) GetCoilNames() []string {
 	return []string{}
 }
 
-func (plc *FakePlc) GetProcessorCounts() (int, int) {
-	return 0, 0
-}
-
-func (plc *FakePlc) SetTrussLights(redLights, blueLights [3]bool) {}
-
 func (plc *FakePlc) generateIoChangeMessage() any {
 	return &struct {
 		Inputs    []bool

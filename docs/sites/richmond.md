@@ -22,13 +22,13 @@ stations.
 |---|---|
 | Field controller Pi | `10.0.100.5` |
 | Switch (management) | `10.0.100.3` — set as **Switch Address** under Arena → Settings, with its Telnet password |
-| Field access point | `192.168.69.1` (fixed by the VH-113; the Pi and switch carry addresses in that subnet) |
+| Field access point | `10.0.100.2` — set as **AP Address** under Arena → Settings. Backup `192.168.69.1`, where it turns up after a reset; the Pi and switch carry addresses in that subnet so the fallback stays reachable |
 | Red e-stop panel | `10.0.100.11` (not installed) |
 | Blue e-stop panel | `10.0.100.12` (not installed) |
 
 ## Hardware
 
-**Switch — Catalyst 3560-CX**, IP Base, hostname `RichmondSwitch`, management `10.0.100.3`
+**Switch — Catalyst 3560-CX**, IP Base, hostname `bioSwitch`, management `10.0.100.3`
 on VLAN 1.
 Boot image lives in `flash:c3560cx-universalk9-mz.152-7.E/`, with `boot system` set so it
 does not stop at the boot loader.

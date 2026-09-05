@@ -60,7 +60,7 @@ Simplified match play UI for 10th Street practice field controller.
     <div class="mp-status">
       <strong id="matchName">&nbsp;</strong>
       <label class="ms-3">
-        <input type="checkbox" id="muteMatchSounds"> Mute
+        <input type="checkbox" id="muteMatchSounds" onchange="setMuteMatchSounds()"> Mute
       </label>
       <span id="testMatchNameWrap" class="ms-3" style="display:none">
         Name: <input type="text" id="testMatchName" size="14" onblur="setTestMatchName()"/>
@@ -81,6 +81,22 @@ Simplified match play UI for 10th Street practice field controller.
     </div>
   </div>
 </div>
+
+<!-- Match sounds.
+     Upstream plays these on the audience display, which this fork does not have -- there is
+     no audience_display template, so the sound notifier had nothing listening to it and the
+     field has always been silent. The cues live here instead, on the page the operator is
+     already looking at. Preloaded, since a cue fetched when it is needed arrives late. -->
+<audio id="sound-start" preload="auto" src="/static/audio/start.wav"></audio>
+<audio id="sound-resume" preload="auto" src="/static/audio/resume.wav"></audio>
+<audio id="sound-shift_change" preload="auto" src="/static/audio/shift_change.wav"></audio>
+<audio id="sound-field_reset" preload="auto" src="/static/audio/field_reset.wav"></audio>
+<audio id="sound-warning" preload="auto" src="/static/audio/warning.wav"></audio>
+<audio id="sound-end" preload="auto" src="/static/audio/end.wav"></audio>
+<audio id="sound-abort" preload="auto" src="/static/audio/abort.wav"></audio>
+<audio id="sound-match_result" preload="auto" src="/static/audio/match_result.wav"></audio>
+<audio id="sound-pick_clock" preload="auto" src="/static/audio/pick_clock.wav"></audio>
+<audio id="sound-pick_clock_expired" preload="auto" src="/static/audio/pick_clock_expired.wav"></audio>
 {{end}}
 
 {{define "mpCard"}}

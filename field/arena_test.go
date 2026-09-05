@@ -221,9 +221,57 @@ func TestGameDataWithheldUntilTeleop(t *testing.T) {
 	assert.Equal(t, arena.gameDataForAutoWinner(), arena.GameData)
 	assert.Contains(t, []string{"R", "B"}, arena.GameData)
 
-	// Cleared again when the match is reset.
-	arena.MatchState = PostMatch
+	// Withdrawn when the match ends, without waiting for anyone to reset. Left set, it
+	// outlives the match: a driver station connecting during PostMatch is sent the previous
+	// match's winner the moment it appears.
+	arena.MatchStartTime = time.Now().Add(
+		-time.Duration(
+			game.MatchTiming.WarmupDurationSec+game.MatchTiming.AutoDurationSec+
+				game.MatchTiming.PauseDurationSec+game.MatchTiming.TeleopDurationSec,
+		) * time.Second,
+	)
+	arena.Update()
+	assert.Equal(t, PostMatch, arena.MatchState)
+	assert.Equal(t, "", arena.GameData)
+
+	// And still empty after a reset.
 	assert.Nil(t, arena.ResetMatch())
+	assert.Equal(t, "", arena.GameData)
+}
+
+// An aborted match ends the same way a completed one does: the winner it was carrying is no
+// longer current, so it must not be handed to whatever connects next.
+func TestGameDataClearedOnAbort(t *testing.T) {
+	arena := setupTestArena(t)
+
+	assert.Nil(t, arena.Database.CreateTeam(&model.Team{Id: 254}))
+	assert.Nil(t, arena.assignTeam(254, "R1"))
+	arena.AllianceStations["R1"].DsConn = &DriverStationConnection{TeamId: 254}
+	arena.AllianceStations["R1"].DsConn.RobotLinked = true
+	for _, station := range []string{"R2", "R3", "B1", "B2", "B3"} {
+		arena.AllianceStations[station].Bypass.Store(true)
+	}
+
+	assert.Nil(t, arena.StartMatch())
+	// This first tick is what consumes the StartMatch state, and it sets MatchStartTime to
+	// now -- so the clock can only be moved back afterwards, not before.
+	arena.Update()
+	arena.MatchStartTime = time.Now().Add(
+		-time.Duration(
+			game.MatchTiming.WarmupDurationSec+game.MatchTiming.AutoDurationSec+
+				game.MatchTiming.PauseDurationSec,
+		) * time.Second,
+	)
+	// One state per tick, so run the machine forward rather than expecting a single Update
+	// to cross warmup, auto and the pause at once.
+	for i := 0; i < 5 && arena.MatchState != TeleopPeriod; i++ {
+		arena.Update()
+	}
+	assert.Equal(t, TeleopPeriod, arena.MatchState)
+	assert.Contains(t, []string{"R", "B"}, arena.GameData)
+
+	assert.Nil(t, arena.AbortMatch())
+	assert.Equal(t, PostMatch, arena.MatchState)
 	assert.Equal(t, "", arena.GameData)
 }
 

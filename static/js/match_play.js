@@ -53,6 +53,13 @@ const clearFieldEStop = function () {
   websocket.send("clearFieldEStop", null);
 };
 
+// Pushed on every toggle so the control means something before a match starts -- an abort
+// cue should follow what the box says right now, not what it said at the last start.
+const setMuteMatchSounds = function () {
+  const mute = document.getElementById("muteMatchSounds").checked;
+  websocket.send("setMuteMatchSounds", {muteMatchSounds: mute});
+};
+
 const startMatch = function () {
   const mute = document.getElementById("muteMatchSounds").checked;
   websocket.send("startMatch", {muteMatchSounds: mute});
@@ -222,12 +229,89 @@ const handleMatchTime = function (data) {
   });
 };
 
+// Unlocks the audio elements against the browser's autoplay policy.
+//
+// Chrome will not play audio until the page has seen a user gesture, and a cue that arrives
+// over the websocket does not count as one -- so the first sound of a session is rejected
+// even though everything is configured correctly. Playing each element muted inside a real
+// gesture satisfies the policy without making a noise, and every later cue is then allowed.
+//
+// Hooked to the first interaction of any kind rather than to a particular control. Sounds
+// are on by default, so there is no one button the operator must press first, and the kiosk
+// display may sit untouched for a long time before anyone reaches for it.
+let audioPrimed = false;
+const primeAudio = function () {
+  if (audioPrimed) {
+    return;
+  }
+  audioPrimed = true;
+
+  document.querySelectorAll("audio").forEach(function (element) {
+    element.muted = true;
+    const played = element.play();
+    const reset = function () {
+      element.pause();
+      element.currentTime = 0;
+      element.muted = false;
+    };
+    if (played === undefined) {
+      reset();
+    } else {
+      played.then(reset).catch(function () {
+        element.muted = false;
+        audioPrimed = false;
+      });
+    }
+  });
+};
+
+// Plays a match cue. Upstream does this on the audience display; this fork has none, so the
+// operator's own page is the only thing that can make a noise.
+//
+// Any cue still playing is stopped first: the sounds are close together at the end of a
+// match, and two overlapping is worse than one cut short.
+const handlePlaySound = function (sound) {
+  document.querySelectorAll("audio").forEach(function (element) {
+    element.pause();
+    element.currentTime = 0;
+  });
+
+  const element = document.getElementById("sound-" + sound);
+  if (element === null) {
+    // A cue with no element is not worth breaking the page over -- the match is running.
+    console.warn("No audio element for sound '" + sound + "'.");
+    return;
+  }
+
+  // Browsers refuse to play until the page has been interacted with, and reject the promise
+  // rather than throwing. Unhandled, that surfaces as a console error on every cue.
+  const played = element.play();
+  if (played !== undefined) {
+    played.catch(function (error) {
+      console.warn("Could not play '" + sound + "': " + error);
+    });
+  }
+};
+
 $(function () {
   websocket = new CheesyWebsocket("/match_play/websocket", {
     arenaStatus: function (event) { handleArenaStatus(event.data); },
     matchLoad:   function (event) { handleMatchLoad(event.data); },
     matchTime:   function (event) { handleMatchTime(event.data); },
     matchTiming: function (event) { handleMatchTiming(event.data); },
+    playSound:   function (event) { handlePlaySound(event.data); },
+  });
+
+  // Any interaction will do. Registered on the capture phase so a click on a control primes
+  // before that control's own handler runs -- pressing Start Match should not lose the start
+  // cue to the gesture that caused it.
+  //
+  // Deliberately not {once: true}: priming can fail, and that removes the listener whether
+  // it worked or not, leaving the page permanently unable to retry. primeAudio guards
+  // against repeats itself and clears its own flag on failure, so a later gesture tries
+  // again.
+  ["pointerdown", "keydown", "touchstart"].forEach(function (event) {
+    document.addEventListener(event, primeAudio, true);
   });
 });
 
