@@ -87,6 +87,7 @@ type Arena struct {
 	lastPeriodicTaskTime time.Time
 	EventStatus          EventStatus
 	MuteMatchSounds      bool
+	currentView          string // operating page the kiosks mirror; see SetCurrentView
 	matchAborted         bool
 	soundsPlayed         map[*game.MatchSound]struct{}
 
@@ -1579,6 +1580,55 @@ func ParseAutoWinnerMode(name string) (AutoWinnerMode, error) {
 
 // SetAutoWinnerMode selects how the AUTO result will be decided for the next match.
 // It cannot be changed once a match is underway: the winner is assigned at the start
+// Field views that every kiosk mirrors. Only the two operating pages take part: the
+// settings and team pages are administrative, and dragging every display to them because
+// one operator opened one would be worse than the drift it fixed.
+const (
+	ViewMatchPlay    = "match_play"
+	ViewFreePractice = "free_practice"
+)
+
+// SetCurrentView records which operating page the operators are on, so that kiosks
+// opened on the other one follow. Whichever page was opened most recently wins.
+//
+// This is display state, not field state: it does not gate anything, and a kiosk that
+// ignores it still works. It exists because a field can have several displays and they
+// are useless if they disagree about what is being run.
+func (arena *Arena) SetCurrentView(view string) {
+	if view != ViewMatchPlay && view != ViewFreePractice {
+		return
+	}
+
+	arena.mu.Lock()
+	changed := arena.currentView != view
+	arena.currentView = view
+	arena.mu.Unlock()
+
+	if changed {
+		arena.ArenaStatusNotifier.Notify()
+	}
+}
+
+// CurrentView is the operating page kiosks should be showing.
+func (arena *Arena) CurrentView() string {
+	arena.mu.Lock()
+	defer arena.mu.Unlock()
+	return arena.currentViewLocked()
+}
+
+// currentViewLocked assumes the arena lock is held. Free practice forces its own view:
+// match play disables every control in that state, so a kiosk left there is useless
+// regardless of where anyone navigated last.
+func (arena *Arena) currentViewLocked() string {
+	if arena.MatchState == FreePractice {
+		return ViewFreePractice
+	}
+	if arena.currentView == "" {
+		return ViewMatchPlay
+	}
+	return arena.currentView
+}
+
 // of AUTO and drives both the HUB lighting and the game data sent to driver stations,
 // so a mid-match change would desynchronise them.
 func (arena *Arena) SetAutoWinnerMode(mode AutoWinnerMode) error {

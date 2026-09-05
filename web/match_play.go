@@ -31,6 +31,10 @@ func (web *Web) matchPlayHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Opening a page is what selects it for every kiosk. A display that follows lands
+	// back here and sets the same value, which is why the setter ignores no-ops.
+	web.arena.SetCurrentView(field.ViewMatchPlay)
+
 	template, err := web.parseFiles("templates/match_play.html", "templates/base.html")
 	if err != nil {
 		handleWebErr(w, err)

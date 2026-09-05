@@ -92,20 +92,15 @@ const getTeamNumber = function (station) {
 
 // Set once a navigation is under way, so the broadcasts that arrive before the page
 // unloads do not each trigger another one.
-let leavingForFreePractice = false;
+let leavingForOtherView = false;
 
 const handleArenaStatus = function (data) {
-  // Follow the field into free practice. Match play has no meaning there -- every
-  // control below disables itself -- and without this a second kiosk sits on a screen of
-  // dead buttons with nothing saying why. The server already redirects on load, so this
-  // covers the case where the mode changed after the page opened.
-  //
-  // Only this direction is automatic. Free practice is set up while the arena is still in
-  // PreMatch, so a page that left whenever the state was not FreePractice would eject the
-  // operator before they could register anyone.
-  if (matchStates[data.MatchState] === "FREE_PRACTICE" && !leavingForFreePractice) {
-    leavingForFreePractice = true;
-    window.location.href = "/free_practice";
+  // Every kiosk shows the same operating page. The server records whichever of them was
+  // opened most recently, and displays sitting on the other one follow, so a field with
+  // several screens does not have them disagreeing about what is being run.
+  if (data.CurrentView && data.CurrentView !== "match_play" && !leavingForOtherView) {
+    leavingForOtherView = true;
+    window.location.href = "/" + data.CurrentView;
     return;
   }
 

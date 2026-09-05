@@ -24,6 +24,10 @@ func (web *Web) freePracticeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Opening a page is what selects it for every kiosk. Set before rendering so a
+	// display that follows here does not immediately bounce back.
+	web.arena.SetCurrentView(field.ViewFreePractice)
+
 	template, err := web.parseFiles("templates/free_practice.html", "templates/base.html")
 	if err != nil {
 		handleWebErr(w, err)

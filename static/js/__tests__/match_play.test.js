@@ -447,12 +447,12 @@ describe("handleMatchLoad", () => {
   });
 });
 
-// ---- Free practice follow ----------------------------------------------------
+// ---- Shared kiosk view -------------------------------------------------------
 
-// A kiosk left on match play while another operator starts free practice would
-// otherwise sit on a screen of dead buttons -- every control disables itself in that
-// state -- with nothing saying why.
-describe("handleArenaStatus — follows the field into free practice", () => {
+// Several displays on one field are useless if they disagree about what is being run.
+// The server records whichever operating page was opened most recently and every kiosk
+// follows it.
+describe("handleArenaStatus — shared kiosk view", () => {
   let originalLocation;
 
   beforeEach(() => {
@@ -465,16 +465,32 @@ describe("handleArenaStatus — follows the field into free practice", () => {
     window.location = originalLocation;
   });
 
-  test("navigates to free practice when the arena enters it", () => {
-    handleArenaStatus(makeStatus(7 /* FREE_PRACTICE */, false));
+  test("follows when another kiosk selects free practice", () => {
+    const status = makeStatus(0, false);
+    status.CurrentView = "free_practice";
+    handleArenaStatus(status);
     expect(window.location.href).toBe("/free_practice");
   });
 
-  test("stays put for every other state", () => {
-    for (const state of [0, 1, 2, 3, 4, 5, 6]) {
-      window.location.href = "";
-      handleArenaStatus(makeStatus(state, false));
-      expect(window.location.href).toBe("");
-    }
+  test("stays put when the shared view is already this page", () => {
+    const status = makeStatus(0, false);
+    status.CurrentView = "match_play";
+    handleArenaStatus(status);
+    expect(window.location.href).toBe("");
+  });
+
+  // An older server, or a message predating the field, must not strand the kiosk.
+  test("stays put when no view is reported", () => {
+    handleArenaStatus(makeStatus(0, false));
+    expect(window.location.href).toBe("");
+  });
+
+  // The view is followed regardless of match state: free practice is set up while the
+  // arena is still in PreMatch, so keying off the state would eject the operator.
+  test("follows the view rather than the match state", () => {
+    const status = makeStatus(7 /* FREE_PRACTICE */, false);
+    status.CurrentView = "match_play";
+    handleArenaStatus(status);
+    expect(window.location.href).toBe("");
   });
 });

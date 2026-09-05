@@ -60,7 +60,20 @@ const clearFieldEStop = function () {
 
 // -- Arena status handler --
 
+// Set once a navigation is under way, so the broadcasts that arrive before the page
+// unloads do not each trigger another one.
+let leavingForOtherView = false;
+
 const handleArenaStatus = function (data) {
+  // Every kiosk shows the same operating page -- see the matching block in match_play.js.
+  // Free practice is set up while the arena is still in PreMatch, so this follows the
+  // recorded view rather than the match state, which would eject the operator mid-setup.
+  if (data.CurrentView && data.CurrentView !== "free_practice" && !leavingForOtherView) {
+    leavingForOtherView = true;
+    window.location.href = "/" + data.CurrentView;
+    return;
+  }
+
   // FreePracticeState is injected as a JS constant by the HTML template.
   const inFreePractice = data.MatchState === FreePracticeState;
   const halted = Boolean(data.FieldDisabled);

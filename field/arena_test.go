@@ -1329,3 +1329,43 @@ func TestConcurrentOperatorsDoNotDeadlockOrPanic(t *testing.T) {
 		arena.MatchState,
 	)
 }
+
+// Several displays on one field are useless if they disagree about what is being run, so
+// the arena records which operating page was opened most recently and the kiosks follow.
+func TestCurrentView(t *testing.T) {
+	arena := setupTestArena(t)
+
+	// Match play until told otherwise, so a field that has never navigated still agrees.
+	assert.Equal(t, ViewMatchPlay, arena.CurrentView())
+
+	arena.SetCurrentView(ViewFreePractice)
+	assert.Equal(t, ViewFreePractice, arena.CurrentView())
+
+	arena.SetCurrentView(ViewMatchPlay)
+	assert.Equal(t, ViewMatchPlay, arena.CurrentView())
+
+	// Anything unrecognised is ignored rather than stranding every kiosk on a page that
+	// does not exist.
+	arena.SetCurrentView("setup/settings")
+	assert.Equal(t, ViewMatchPlay, arena.CurrentView())
+	arena.SetCurrentView("")
+	assert.Equal(t, ViewMatchPlay, arena.CurrentView())
+}
+
+// Free practice overrides the recorded view: match play disables every control in that
+// state, so a kiosk left there is useless no matter where anyone navigated last.
+func TestCurrentViewForcedByFreePractice(t *testing.T) {
+	arena := setupTestArena(t)
+	arena.SetCurrentView(ViewMatchPlay)
+
+	assert.Nil(t, arena.EnterFreePractice())
+	assert.Equal(t, ViewFreePractice, arena.CurrentView())
+
+	// Selecting match play while free practice runs does not move anyone.
+	arena.SetCurrentView(ViewMatchPlay)
+	assert.Equal(t, ViewFreePractice, arena.CurrentView())
+
+	// Once free practice ends the recorded selection applies again.
+	assert.Nil(t, arena.ExitFreePractice())
+	assert.Equal(t, ViewMatchPlay, arena.CurrentView())
+}
