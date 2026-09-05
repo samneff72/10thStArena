@@ -432,20 +432,31 @@ If you see nothing at all through a full power cycle of the switch, the problem 
 the cable. A switch whose fans spin but whose `SYST` LED never lights is not booting, and
 there is nothing on the console to talk to.
 
-Assign the switch a static management IP on the field management subnet, mask
-`255.255.255.0`. Fields are numbered so that several can be reached over one VPN without
-overlapping: site `X` uses `10.X.100.0/24`, giving `10.X.100.3` for the switch alongside
-`10.X.100.5` for the Pi and `10.X.100.2` for the access point.
+Assign the switch a static management IP of `10.0.100.3`, mask `255.255.255.0`.
 
-| Site | Management subnet | Switch |
-|------|-------------------|--------|
-| 1    | 10.0.100.0/24     | 10.0.100.3 |
-| 2    | 10.2.100.0/24     | 10.2.100.3 |
-| 3    | 10.3.100.0/24     | 10.3.100.3 |
+**Every field uses `10.0.100.0/24`, and it is not a per-site choice.** Driver station
+software is hardcoded to find its FMS at `10.0.100.5`, and bioarena matches it:
+`ServerIpAddress` in [network/switch.go](network/switch.go) is fixed at that address, the
+driver station listener binds to it, and the switch's NTP server line points at it. A field
+addressed anywhere else has a listener that never starts, logging
+*"Change IP address to 10.0.100.5 and restart"*.
 
-Within a site the last two octets never change, so every field is wired and documented
-identically and only the second octet identifies which one you are on. Record the
-assignment for each deployment in [docs/sites/](docs/sites).
+| Device | Address |
+|--------|---------|
+| Field controller Pi | 10.0.100.5 |
+| Switch (management) | 10.0.100.3 |
+| Access point        | 10.0.100.2 |
+
+**So fields cannot share a network.** Two of them on one LAN or one VPN would both claim
+`10.0.100.5`, and neither would work. Each field is a separate island: its own switch, its
+own controller, no route between them. If you need to reach more than one from a single
+machine, reach them one at a time — over a bench network, or by plugging into the field you
+want.
+
+That is a real constraint rather than a preference, and it is the reason every field is
+wired and documented identically. Record each deployment in [docs/sites/](docs/sites) — the
+addresses will be the same in every record, which is the point; what differs is the station
+count, the hardware, and how the e-stops are wired.
 
 The switch is named `bioSwitch` by the bootstrap script. Nothing reads the hostname —
 bioarena reaches the switch by address over Telnet — so it exists only to tell you what you

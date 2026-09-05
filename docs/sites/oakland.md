@@ -3,15 +3,17 @@
 Site record for one deployment of this project. Everything here is specific to this
 field — the README describes the product, this describes how one instance of it is wired.
 
-Copied from [richmond.md](richmond.md). Values not yet decided are marked **TBD**; fill them
-in during bring-up rather than leaving them to be rediscovered later.
+Copied from [richmond.md](richmond.md). The addresses are identical to Richmond's and are
+not a choice — see [Addressing](#addressing). What differs between fields is the station
+count, the hardware, and how the e-stops are wired; those are marked **TBD** where this
+site has not settled them yet, to be filled in during bring-up rather than rediscovered.
 
 ## Field
 
 | | |
 |---|---|
 | Stations | **TBD** — how many driver stations are physically wired |
-| Management subnet | **TBD** — see [Addressing](#addressing) below, which needs a decision before anything is wired |
+| Management subnet | `10.0.100.0/24`, on VLAN 1 — the same as every field; see [Addressing](#addressing) |
 | Team networks | The switch routes and serves DHCP; bioarena configures it |
 
 Any station without a driver station needs **BYP** checked in Match Play, since bioarena
@@ -19,27 +21,19 @@ always thinks in six stations.
 
 ## Addressing
 
-**Decide this before assigning any addresses.** The README's convention is that site `X`
-uses `10.X.100.0/24`, so several fields can be reached over one VPN without overlapping —
-Richmond is `10.0.100.0/24`, and Oakland would be the next number.
+**Identical to Richmond, deliberately.** Every field uses `10.0.100.0/24` — it is not a
+per-site choice. Driver station software is hardcoded to find its FMS at `10.0.100.5`, and
+bioarena matches it: `ServerIpAddress` in [network/switch.go](../../network/switch.go) is
+fixed at that address and the driver station listener binds to it. A field addressed
+anywhere else has a listener that never starts.
 
-**That convention does not work today.** `ServerIpAddress` in
-[network/switch.go](../../network/switch.go) is a package variable fixed at `10.0.100.5`,
-and nothing reads it from settings. `driver_station_connection.go` binds its TCP listener to
-it, so on a Pi addressed `10.2.100.5` the listener fails outright and logs
-*"Change IP address to 10.0.100.5 and restart"*. Driver station software is itself hardcoded
-to look for its FMS at `10.0.100.5`.
+**Oakland and Richmond therefore cannot share a network.** Both claim `10.0.100.5`, so on
+one LAN or one VPN neither would work. The two fields are separate islands with no route
+between them, and reaching both from one machine means reaching them one at a time — over a
+bench network, or by plugging into the field you want.
 
-So there are two honest options, and this record should say which was taken:
-
-1. **Use `10.0.100.0/24`, the same as Richmond.** Works with no code change. The cost is
-   that Richmond and Oakland overlap, so they cannot be on one VPN or one routed network.
-   Fine while the two fields are independent.
-2. **Make the FMS address configurable** and use `10.2.100.0/24`. That means threading
-   `ServerIpAddress` through settings, and confirming the driver station software can be
-   pointed somewhere other than `10.0.100.5` — which it may not be able to be.
-
-Until one is chosen, the addresses below are written for option 1.
+Nothing in this section is a decision this site gets to make; it is recorded so that the
+next person does not try to renumber Oakland to keep the two reachable at once.
 
 ## Addresses
 
@@ -126,6 +120,6 @@ A laptop used for both driving and development ends up on the field and on WiFi 
 and the field's DHCP hands out a default route to a network with no way off it. Raise the
 metric on its wired adapter or unplug it before expecting the internet to work.
 
-If this site ends up on a subnet other than `10.0.100.0/24`, the chrony drop-in
-([docs/chrony-bioarena.conf](../chrony-bioarena.conf)) needs its `allow` line widened to
-match, or the field's clocks will not sync to the Pi.
+This field is its own island. Nothing here is reachable from Richmond and nothing at
+Richmond is reachable from here, because both use the same addresses — see
+[Addressing](#addressing).
