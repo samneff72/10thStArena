@@ -63,10 +63,14 @@ SERVICE_FILE="$(mktemp)"
 trap 'rm -f "$SERVICE_FILE"' EXIT
 step=0
 
+# Where the panel's kiosk display points. Not a setting: driver station software is
+# hardcoded to find its FMS at this address, so the field controller is always here.
+FMS_ADDRESS="10.0.100.5"
+
 announce() {
 	step=$((step + 1))
 	echo ""
-	echo "[$step/4] $1"
+	echo "[$step/5] $1"
 }
 
 fail() {
@@ -126,6 +130,54 @@ ssh -t "$REMOTE" "
 	rm -rf ~/$STAGING
 "
 echo "      installed to /opt/estop-panel"
+
+announce "Installing the kiosk browser autostart"
+# The same kiosk as the field controller, pointed at the controller rather than at this Pi.
+# A panel runs estop-panel on 8765 and has no web UI of its own, so localhost would never
+# answer and the script would wait forever.
+#
+# 10.0.100.5 is not a choice: the driver station software is hardcoded to find its FMS
+# there, so the controller is always at that address on a field.
+#
+# Into the login user's home, because it runs in their desktop session rather than as the
+# service. Harmless on a headless panel: the autostart entry is simply never read, which is
+# why this runs unconditionally rather than trying to detect a display.
+scp -q docs/kiosk/bioarena-kiosk.sh "$REMOTE:~/bioarena-kiosk.sh"
+# Single-quoted so $HOME is the Pi's, not this machine's; the URL is passed in separately.
+ssh "$REMOTE" "FMS_URL=http://$FMS_ADDRESS:8080 "'sh -s' <<'REMOTE_KIOSK'
+set -e
+mkdir -p ~/.local/bin ~/.config/autostart
+install -m 755 ~/bioarena-kiosk.sh ~/.local/bin/bioarena-kiosk.sh
+rm -f ~/bioarena-kiosk.sh
+KIOSK="$HOME/.local/bin/bioarena-kiosk.sh $FMS_URL"
+
+# Every autostart mechanism the Pi desktop might be using, because they disagree and the
+# wrong one fails by simply never running.
+{
+	echo "[Desktop Entry]"
+	echo "Type=Application"
+	echo "Name=Bioarena field"
+	echo "Comment=Open the field controller full screen at startup"
+	echo "Exec=$KIOSK"
+	echo "X-GNOME-Autostart-enabled=true"
+} > ~/.config/autostart/bioarena-kiosk.desktop
+
+# labwc, the Trixie default, runs its own shell script and ignores XDG entries.
+if command -v labwc >/dev/null 2>&1; then
+	mkdir -p ~/.config/labwc
+	touch ~/.config/labwc/autostart
+	grep -q bioarena-kiosk ~/.config/labwc/autostart || echo "$KIOSK &" >> ~/.config/labwc/autostart
+	chmod +x ~/.config/labwc/autostart
+fi
+
+# wayfire, the Bookworm default on a Pi 4, takes an [autostart] section in its ini.
+if command -v wayfire >/dev/null 2>&1; then
+	touch ~/.config/wayfire.ini
+	grep -q "^\[autostart\]" ~/.config/wayfire.ini || echo "[autostart]" >> ~/.config/wayfire.ini
+	grep -q bioarena-kiosk ~/.config/wayfire.ini || sed -i "/^\[autostart\]/a bioarena = $KIOSK" ~/.config/wayfire.ini
+fi
+REMOTE_KIOSK
+echo "      the display will open http://$FMS_ADDRESS:8080 at login"
 
 announce "Checking it stayed up"
 sleep 2

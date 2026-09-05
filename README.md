@@ -159,6 +159,17 @@ Needs a desktop image and Chromium (`sudo apt install chromium`), and auto-login
 `raspi-config` if you want it without a keyboard. On a headless Pi the entry is simply never
 read. Turn it off by deleting `~/.config/autostart/bioarena-kiosk.desktop`.
 
+**E-stop panel Pis get the same screen.** `deploy-panel.sh` installs the identical kiosk,
+pointed at the controller — `http://10.0.100.5:8080` — rather than at itself, since a panel
+runs `estop-panel` on 8765 and has no web UI of its own. A panel with a monitor beside the
+alliance station therefore shows whatever the operator is running, and follows along when
+the operating page changes. Installed unconditionally: on a headless panel the autostart
+entry is never read, so there is nothing to configure either way.
+
+A panel that boots before the controller waits for it rather than showing an error, which
+matters more here than on the controller itself — it is waiting on another machine that may
+not be powered yet.
+
 **Set up key authentication first**, or every deploy asks for a password several times. On
 your development machine:
 
