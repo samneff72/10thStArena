@@ -113,8 +113,19 @@ const handleArenaStatus = function (data) {
   // Hardware status badges.
   document.getElementById("apStatus").dataset.status = data.AccessPointStatus || "";
   document.getElementById("swStatus").dataset.status = data.SwitchStatus || "";
-  document.getElementById("hwEStopStatus").dataset.statusOk =
-    String(!(data.GpioFieldEStopActive || data.FieldEStop));
+  // Three states, matching match play: grey means no field e-stop is configured, which
+  // otherwise reads identically to a healthy one at rest.
+  const estopBadge = document.getElementById("hwEStopStatus");
+  const estopStopped = data.GpioFieldEStopActive || data.FieldEStop;
+  if (!data.FieldEStopMonitored && !estopStopped) {
+    estopBadge.dataset.statusOk = "unmonitored";
+    estopBadge.textContent = "FIELD E-STOP N/A";
+    estopBadge.title = "No field e-stop configured — see Setup > Settings";
+  } else {
+    estopBadge.dataset.statusOk = String(!estopStopped);
+    estopBadge.textContent = "FIELD E-STOP";
+    estopBadge.title = estopStopped ? "Field e-stop active" : "Field e-stop healthy";
+  }
 
   const stations = ["R1", "R2", "R3", "B1", "B2", "B3"];
   stations.forEach(function (s) {

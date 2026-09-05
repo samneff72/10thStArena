@@ -92,6 +92,10 @@ func (arena *Arena) generateArenaStatusMessage() any {
 		PlcArmorBlockStatuses     map[string]bool
 		GpioFieldEStopActive      bool
 		GpioFieldEStopFault       string
+		// FieldEStopMonitored distinguishes a healthy button from no button at all. The
+		// noop panel reports StopOK forever, so without this the badge reads the same
+		// whether the field e-stop is working or was never configured.
+		FieldEStopMonitored bool
 		FreePracticeReconfiguring bool
 		FieldDisabled             bool
 		StationLinksKnown         bool
@@ -111,6 +115,7 @@ func (arena *Arena) generateArenaStatusMessage() any {
 		arena.Plc.GetArmorBlockStatuses(),
 		arena.fieldEStopActive.Load(),
 		faultDescription(arena.fieldEStopFault.Load()),
+		arena.fieldEStopMonitored.Load(),
 		arena.freePracticeReconfiguring.Load(),
 		arena.fieldDisabled.Load(),
 		arena.stationLinksKnown.Load(),

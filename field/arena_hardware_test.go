@@ -1,6 +1,7 @@
 package field
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -423,4 +424,19 @@ func TestLoadSettingsReleasesThePreviousFieldEStop(t *testing.T) {
 
 	assert.True(t, previous.closed, "the previous panel's GPIO lines were never released")
 	assert.NotSame(t, previous, arena.FieldEStop, "the panel should have been rebuilt")
+}
+
+// The badge cannot tell a healthy field e-stop from an absent one without this: a noop
+// panel reports StopOK forever, exactly like a working button at rest.
+func TestFieldEStopMonitoredReflectsRealHardware(t *testing.T) {
+	arena := setupTestArena(t)
+
+	// No pin configured, so the noop panel is installed and nothing is watching.
+	assert.Nil(t, arena.LoadSettings())
+	assert.False(t, arena.fieldEStopMonitored.Load())
+
+	status := arena.generateArenaStatusMessage()
+	monitored := reflect.ValueOf(status).Elem().FieldByName("FieldEStopMonitored")
+	assert.True(t, monitored.IsValid(), "arena status should carry FieldEStopMonitored")
+	assert.False(t, monitored.Bool())
 }

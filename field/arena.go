@@ -110,6 +110,7 @@ type Arena struct {
 	ethernetApplyMutex        sync.Mutex      // serialises wired reconfigurations
 	fieldEStopActive          atomic.Bool     // latched when GPIO field e-stop fires; cleared by ClearFieldEStop()
 	fieldEStopFault           atomic.Uint32   // hardware.FaultKind of the field e-stop; FaultNone when healthy
+	fieldEStopMonitored       atomic.Bool     // true when real GPIO hardware is behind FieldEStop, not the noop
 	fieldDisabled             atomic.Bool     // operator halt: robots disabled, field networking untouched
 	stationLinksKnown         atomic.Bool     // true once the switch has reported driver station port links
 	lastPortBounce            [6]time.Time    // when each station's port was last cycled to rescue a driver station
@@ -233,6 +234,10 @@ func (arena *Arena) LoadSettings() error {
 		arena.FieldEStop.Close()
 	}
 
+	// Recorded so the UI can tell "healthy" from "nothing is watching". A noop panel reports
+	// StopOK forever, which is indistinguishable from a working button at rest unless the
+	// badge is told which it has.
+	arena.fieldEStopMonitored.Store(false)
 	if settings.FieldEStopPin != 0 {
 		panel, err := hardware.NewGpioFieldEStopPanel("gpiochip0", settings.FieldEStopNcPin, settings.FieldEStopPin)
 		if err != nil {
@@ -248,6 +253,7 @@ func (arena *Arena) LoadSettings() error {
 				log.Println("WARNING: Field e-stop is wired single-channel — wiring faults will not be detected.")
 			}
 			arena.FieldEStop = panel
+			arena.fieldEStopMonitored.Store(true)
 		}
 	} else {
 		log.Println("WARNING: No field e-stop pin configured — field-wide e-stop not monitored.")

@@ -178,8 +178,20 @@ const handleArenaStatus = function (data) {
   // Hardware status badges.
   document.getElementById("apStatus").dataset.status = data.AccessPointStatus || "";
   document.getElementById("swStatus").dataset.status = data.SwitchStatus || "";
-  document.getElementById("hwEStopStatus").dataset.statusOk =
-    String(!(data.GpioFieldEStopActive || data.FieldEStop));
+  // Three states, not two. A field with no e-stop hardware configured reports "not
+  // stopped" exactly like a healthy one at rest, so green there would claim a working
+  // field e-stop that does not exist. Grey says nothing is watching.
+  const estopBadge = document.getElementById("hwEStopStatus");
+  const estopStopped = data.GpioFieldEStopActive || data.FieldEStop;
+  if (!data.FieldEStopMonitored && !estopStopped) {
+    estopBadge.dataset.statusOk = "unmonitored";
+    estopBadge.textContent = "FIELD E-STOP N/A";
+    estopBadge.title = "No field e-stop configured — see Setup > Settings";
+  } else {
+    estopBadge.dataset.statusOk = String(!estopStopped);
+    estopBadge.textContent = "FIELD E-STOP";
+    estopBadge.title = estopStopped ? "Field e-stop active" : "Field e-stop healthy";
+  }
 
   // Update control button states.
   const btnStart = document.getElementById("btnStart");

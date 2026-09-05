@@ -112,6 +112,20 @@
 .badge-status[data-status=ACTIVE] {
   background-color: #0c6;
 }
+/* The bare [data-status-ok] rules above tie with .badge-status on specificity, and
+   .badge-status comes later, so it wins and pins these badges red whatever the value is.
+   Qualifying by class breaks the tie. */
+.badge-status[data-status-ok="true"] {
+  background-color: #0c6;
+}
+.badge-status[data-status-ok="false"] {
+  background-color: #e66;
+}
+/* Configured is not the same as healthy. Grey says nothing is watching -- green here would
+   claim a working field e-stop where there is no hardware behind it at all. */
+.badge-status[data-status-ok="unmonitored"] {
+  background-color: #666;
+}
 .badge-saved-match {
   background-color: #666;
 }
