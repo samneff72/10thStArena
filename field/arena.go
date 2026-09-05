@@ -30,6 +30,11 @@ const (
 	periodicTaskPeriodSec    = 30
 	matchEndScoreDwellSec    = 3
 	preLoadNextMatchDelaySec = 5
+
+	// How long the field dwells in PostMatch before returning to PreMatch on its own.
+	// Long enough for the end-of-match sounds and the Hub LED post-match sequence to
+	// finish, short enough that a practice round turns around quickly.
+	postMatchAutoClearDelaySec = 5
 	scheduledBreakDelaySec   = 5
 	earlyLateThresholdMin    = 2.5
 
@@ -76,13 +81,27 @@ type Arena struct {
 	lastLightingState    hardware.LightingState
 	CurrentMatch         *model.Match
 	MatchStartTime       time.Time
+	postMatchStartTime   time.Time
 	LastMatchTimeSec     float64
 	lastDsPacketTime     time.Time
 	lastPeriodicTaskTime time.Time
 	EventStatus          EventStatus
 	MuteMatchSounds      bool
+	currentView          string // operating page the kiosks mirror; see SetCurrentView
 	matchAborted         bool
 	soundsPlayed         map[*game.MatchSound]struct{}
+
+	// mu serialises the match loop against the web handlers. Update runs on the arena
+	// goroutine every 10ms while StartMatch, ClearMatch, SubstituteTeams, DisableField
+	// and the rest are called from HTTP and WebSocket goroutines, so without it two
+	// operators -- or one operator and the loop -- can interleave mid-mutation.
+	// sendDsPacket reading Team.Id while assignTeam sets Team to nil panics the process
+	// outright, taking the field down.
+	//
+	// Exported methods take it; anything reachable from Update has an unexported
+	// counterpart, since Go mutexes are not reentrant. Nothing under it may block on
+	// network I/O -- see setupNetwork.
+	mu sync.Mutex
 
 	freePracticeReconfiguring atomic.Bool     // true while AP is being reconfigured for a slot change
 	freePracticeReconfigMu    sync.Mutex      // serialises concurrent SetFreePracticeSlot calls
@@ -172,6 +191,9 @@ type teamNetwork interface {
 
 // Loads or reloads the event settings upon initial setup or change.
 func (arena *Arena) LoadSettings() error {
+	arena.mu.Lock()
+	defer arena.mu.Unlock()
+
 	settings, err := arena.Database.GetEventSettings()
 	if err != nil {
 		return err
@@ -313,6 +335,9 @@ func (arena *Arena) LoadNextMatch(startScheduledBreak bool) error {
 
 // Assigns the given team to the given station, also substituting it into the match record.
 func (arena *Arena) SubstituteTeams(red1, red2, red3, blue1, blue2, blue3 int) error {
+	arena.mu.Lock()
+	defer arena.mu.Unlock()
+
 	if !arena.CurrentMatch.ShouldAllowSubstitution() {
 		return fmt.Errorf("Can't substitute teams for qualification matches.")
 	}
@@ -356,6 +381,9 @@ func (arena *Arena) SubstituteTeams(red1, red2, red3, blue1, blue2, blue3 int) e
 
 // Starts the match if all conditions are met.
 func (arena *Arena) StartMatch() error {
+	arena.mu.Lock()
+	defer arena.mu.Unlock()
+
 	err := arena.checkCanStartMatch()
 	if err == nil {
 		// Save the match start time to the database for posterity.
@@ -389,6 +417,13 @@ func (arena *Arena) StartMatch() error {
 
 // Kills the current match if it is underway.
 func (arena *Arena) AbortMatch() error {
+	arena.mu.Lock()
+	defer arena.mu.Unlock()
+	return arena.abortMatchLocked()
+}
+
+// abortMatchLocked is AbortMatch with the arena lock already held.
+func (arena *Arena) abortMatchLocked() error {
 	if arena.MatchState == PreMatch || arena.MatchState == PostMatch {
 		return fmt.Errorf("cannot abort match when it is not in progress")
 	}
@@ -397,6 +432,7 @@ func (arena *Arena) AbortMatch() error {
 		arena.PlaySound("abort")
 	}
 	arena.MatchState = PostMatch
+	arena.postMatchStartTime = time.Now()
 	// Withdrawn with the match, for the same reason it is withheld until teleop: see the
 	// PostMatch transition in Update.
 	arena.GameData = ""
@@ -426,6 +462,13 @@ func (arena *Arena) ResetMatch() error {
 // ClearMatch resets to a new test match while preserving the current team station
 // assignments so teams do not need to re-register between practice rounds.
 func (arena *Arena) ClearMatch() error {
+	arena.mu.Lock()
+	defer arena.mu.Unlock()
+	return arena.clearMatchLocked()
+}
+
+// clearMatchLocked is ClearMatch with the arena lock already held.
+func (arena *Arena) clearMatchLocked() error {
 	if arena.MatchState != PostMatch {
 		return fmt.Errorf("cannot clear match while it is in progress")
 	}
@@ -435,9 +478,29 @@ func (arena *Arena) ClearMatch() error {
 	blue1 := arena.CurrentMatch.Blue1
 	blue2 := arena.CurrentMatch.Blue2
 	blue3 := arena.CurrentMatch.Blue3
+
+	// Carry bypass state across the clear, alongside the team assignments. A practice
+	// field runs the same lineup round after round, and ResetMatch clearing every bypass
+	// meant re-bypassing the empty stations after every match -- now that clearing
+	// happens on its own, that would be every round without anyone asking for it.
+	//
+	// Restored after LoadMatch rather than skipped in ResetMatch, whose own callers still
+	// want a full reset.
+	bypassed := make(map[string]bool, len(arena.AllianceStations))
+	for station, allianceStation := range arena.AllianceStations {
+		bypassed[station] = allianceStation.Bypass.Load()
+	}
+
 	if err := arena.ResetMatch(); err != nil {
 		return err
 	}
+
+	defer func() {
+		for station, wasBypassed := range bypassed {
+			arena.AllianceStations[station].Bypass.Store(wasBypassed)
+		}
+	}()
+
 	return arena.LoadMatch(&model.Match{
 		Type:      model.Test,
 		ShortName: "T",
@@ -468,6 +531,9 @@ func (arena *Arena) DisableAll() {
 // still present.
 // Safe to call from any goroutine (all writes are atomic).
 func (arena *Arena) ClearFieldEStop() {
+	arena.mu.Lock()
+	defer arena.mu.Unlock()
+
 	arena.FieldEStop.Clear()
 	state, fault := arena.FieldEStop.State()
 	arena.fieldEStopFault.Store(uint32(fault))
@@ -492,6 +558,9 @@ func (arena *Arena) MatchTimeSec() float64 {
 // Performs a single iteration of checking inputs and timers and setting outputs accordingly to control the
 // flow of a match.
 func (arena *Arena) Update() {
+	arena.mu.Lock()
+	defer arena.mu.Unlock()
+
 	// Decide what state the robots need to be in, depending on where we are in the match.
 	auto := false
 	enabled := false
@@ -558,6 +627,7 @@ func (arena *Arena) Update() {
 		enabled = true
 		if matchTimeSec >= game.GetDurationToTeleopEnd().Seconds() {
 			arena.MatchState = PostMatch
+			arena.postMatchStartTime = time.Now()
 			// Game data belongs to the match that is now over. Left set, it outlives the
 			// match: a driver station connecting during PostMatch has SentGameData "" and
 			// so is sent the previous match's AUTO winner the moment it appears, and a new
@@ -572,6 +642,23 @@ func (arena *Arena) Update() {
 				time.Sleep(time.Second * preLoadNextMatchDelaySec)
 				arena.preLoadNextMatch()
 			}()
+		}
+	case PostMatch:
+		auto = false
+		enabled = false
+
+		// Return to PreMatch without an operator action. Clearing used to require one,
+		// which stranded the field whenever the operator lost the web UI at match end.
+		//
+		// That is not hypothetical: the FRC Driver Station releases its IP configuration
+		// when a match ends, so an operator running field control from a driver station
+		// laptop is disconnected every single round. It is the driver station's own
+		// behaviour and nothing here can prevent it, but the field no longer needs the
+		// operator in order to reset.
+		if time.Since(arena.postMatchStartTime) >= postMatchAutoClearDelaySec*time.Second {
+			if err := arena.clearMatchLocked(); err != nil {
+				log.Printf("Failed to clear match automatically: %v", err)
+			}
 		}
 	case FreePractice:
 		// No timer logic; stations are granted field-enable continuously.
@@ -685,12 +772,30 @@ func (arena *Arena) Run() {
 	}
 }
 
-// Checks that the given teams are present in the database, allowing team ID 0 which indicates an empty spot.
+// Checks that the given teams are present in the database and that none appears twice,
+// allowing team ID 0 which indicates an empty spot.
+//
+// The duplicate check matters more than it looks. A driver station is identified by its
+// team number: both getAssignedAllianceStation and the UDP receive path find a station by
+// scanning for a matching team. Go randomises map iteration order, so with one team in
+// two stations those lookups return an arbitrary one of them, varying call to call. Two
+// driver stations would contend for a single station's connection and telemetry would
+// land on whichever the map happened to yield.
+//
+// The addressing collides too -- both stations derive the same subnet, the same SVI
+// address, the same DHCP pool and the same SSID -- but the identity collision is the one
+// that produces silent, nondeterministic misbehaviour rather than a switch error.
 func (arena *Arena) validateTeams(teamIds ...int) error {
+	seen := make(map[int]struct{}, len(teamIds))
 	for _, teamId := range teamIds {
 		if teamId == 0 {
 			continue
 		}
+		if _, duplicate := seen[teamId]; duplicate {
+			return fmt.Errorf("Team %d is assigned to more than one station.", teamId)
+		}
+		seen[teamId] = struct{}{}
+
 		team, err := arena.Database.GetTeamById(teamId)
 		if err != nil {
 			return err
@@ -751,6 +856,9 @@ func (arena *Arena) assignTeam(teamId int, station string) error {
 // removing it silently would also suppress the block when a station is empty by
 // mistake. Returns the number of stations newly bypassed.
 func (arena *Arena) BypassEmptyStations() int {
+	arena.mu.Lock()
+	defer arena.mu.Unlock()
+
 	var count int
 	for _, allianceStation := range arena.AllianceStations {
 		if allianceStation.Team == nil && !allianceStation.Bypass.Load() {
@@ -783,6 +891,11 @@ func (arena *Arena) getNextMatch(excludeCurrent bool) (*model.Match, error) {
 
 // Configures the field network for the next match in advance of the current match being scored and committed.
 func (arena *Arena) preLoadNextMatch() {
+	// Runs on its own goroutine, delayed after the match ends, so it takes the lock like
+	// any other caller. The network configuration it triggers is asynchronous.
+	arena.mu.Lock()
+	defer arena.mu.Unlock()
+
 	if arena.MatchState != PostMatch {
 		// The next match has already been loaded; no need to do anything.
 		return
@@ -823,9 +936,15 @@ func (arena *Arena) currentTeams() [6]*model.Team {
 // Asynchronously reconfigures the networking hardware for the new set of teams.
 func (arena *Arena) setupNetwork(teams [6]*model.Team, isPreload bool) {
 	if arena.EventSettings.NetworkSecurityEnabled {
-		if err := arena.accessPoint.ConfigureTeamWifi(teams); err != nil {
-			log.Printf("Failed to configure team WiFi: %s", err.Error())
-		}
+		// Off the caller's goroutine: configuring the AP is a synchronous HTTP request
+		// with a three second timeout, and callers hold the arena lock. Blocking there
+		// would stall the match loop and stop driver station packets for the duration.
+		// configureTeamEthernet is already asynchronous.
+		go func() {
+			if err := arena.accessPoint.ConfigureTeamWifi(teams); err != nil {
+				log.Printf("Failed to configure team WiFi: %s", err.Error())
+			}
+		}()
 	}
 	arena.configureTeamEthernet(teams)
 }
@@ -962,7 +1081,8 @@ func (arena *Arena) handlePlcInputOutput() {
 
 	// Handle PLC functions that are always active.
 	if arena.Plc.GetFieldEStop() && !arena.matchAborted {
-		arena.AbortMatch()
+		// Locked variant: handlePlcInputOutput runs from Update with the lock held.
+		arena.abortMatchLocked()
 	}
 	redEStops, blueEStops := arena.Plc.GetTeamEStops()
 	redAStops, blueAStops := arena.Plc.GetTeamAStops()
@@ -1069,7 +1189,8 @@ func (arena *Arena) handlePanelInput(station string, input hardware.InputState) 
 func (arena *Arena) abortMatchForStop() {
 	switch arena.MatchState {
 	case StartMatch, WarmupPeriod, AutoPeriod, PausePeriod, TeleopPeriod:
-		_ = arena.AbortMatch()
+		// Locked variant: every caller reaches here from Update.
+		_ = arena.abortMatchLocked()
 	}
 }
 
@@ -1113,9 +1234,15 @@ func (arena *Arena) runPeriodicTasks() {
 // settled by then anyway.
 func (arena *Arena) pollStationPortLinks() {
 	// Never during a match: this reads the switch, and the recovery below cycles ports.
-	if arena.MatchState != PreMatch && arena.MatchState != FreePractice {
+	// Snapshot the state rather than holding the lock across the switch read, which is a
+	// Telnet round trip and would stall the match loop for its duration.
+	arena.mu.Lock()
+	matchState := arena.MatchState
+	arena.mu.Unlock()
+	if matchState != PreMatch && matchState != FreePractice {
 		return
 	}
+
 	links, err := arena.teamNetwork.GetStationPortLinks()
 	if err != nil {
 		// Logged only on the transition. An unconfigured switch would otherwise report
@@ -1125,6 +1252,10 @@ func (arena *Arena) pollStationPortLinks() {
 		}
 		return
 	}
+
+	// The switch read is done; take the lock for the station state below.
+	arena.mu.Lock()
+	defer arena.mu.Unlock()
 
 	for i, station := range stationOrder {
 		arena.AllianceStations[station].PortLinked.Store(links[i])
@@ -1146,6 +1277,10 @@ func (arena *Arena) pollStationPortLinks() {
 // Deliberately narrow: a station with no team, no cable, or a working driver station is
 // left alone, and the cooldown keeps a laptop with its driver station software closed from
 // having its port cycled every time round.
+// recoverMissingDriverStations must be called with the arena lock held: it reads each
+// station's Team and DsConn, which the web handlers reassign. Without it the nil check
+// below and the Team.Id read further down can straddle an assignTeam that clears them,
+// dereferencing nil and panicking the process.
 func (arena *Arena) recoverMissingDriverStations(links [6]bool) {
 	for i, station := range stationOrder {
 		allianceStation := arena.AllianceStations[station]
@@ -1173,6 +1308,9 @@ func (arena *Arena) recoverMissingDriverStations(links [6]bool) {
 // EnterFreePractice transitions the arena from PreMatch into FreePractice mode.
 // Returns an error if called from any other state.
 func (arena *Arena) EnterFreePractice() error {
+	arena.mu.Lock()
+	defer arena.mu.Unlock()
+
 	if arena.MatchState != PreMatch {
 		return fmt.Errorf("cannot enter free practice while a match is in progress or results are pending")
 	}
@@ -1216,6 +1354,9 @@ func (arena *Arena) freePracticeEnabled() bool {
 //
 // This is the heavy option. DisableField halts robots without disturbing any of it.
 func (arena *Arena) ExitFreePractice() error {
+	arena.mu.Lock()
+	defer arena.mu.Unlock()
+
 	if arena.MatchState != FreePractice {
 		return fmt.Errorf("not in free practice mode (state=%d)", arena.MatchState)
 	}
@@ -1261,6 +1402,9 @@ func (arena *Arena) ExitFreePractice() error {
 // Triggers a brief AP reconfiguration during which all robots are disabled.
 // If AP reconfiguration fails the slot assignment is rolled back.
 func (arena *Arena) SetFreePracticeSlot(station string, teamId int, wpaKey string) error {
+	arena.mu.Lock()
+	defer arena.mu.Unlock()
+
 	if arena.MatchState != FreePractice && arena.MatchState != PreMatch {
 		return fmt.Errorf("not in free practice mode (state=%d)", arena.MatchState)
 	}
@@ -1325,6 +1469,9 @@ func (arena *Arena) SetFreePracticeSlot(station string, teamId int, wpaKey strin
 // If the slot is already empty no AP reconfiguration is triggered.
 // Triggers a brief AP reconfiguration pause otherwise.
 func (arena *Arena) ClearFreePracticeSlot(station string) error {
+	arena.mu.Lock()
+	defer arena.mu.Unlock()
+
 	if arena.MatchState != FreePractice && arena.MatchState != PreMatch {
 		return fmt.Errorf("not in free practice mode (state=%d)", arena.MatchState)
 	}
@@ -1414,9 +1561,61 @@ func ParseAutoWinnerMode(name string) (AutoWinnerMode, error) {
 
 // SetAutoWinnerMode selects how the AUTO result will be decided for the next match.
 // It cannot be changed once a match is underway: the winner is assigned at the start
+// Field views that every kiosk mirrors. Only the two operating pages take part: the
+// settings and team pages are administrative, and dragging every display to them because
+// one operator opened one would be worse than the drift it fixed.
+const (
+	ViewMatchPlay    = "match_play"
+	ViewFreePractice = "free_practice"
+)
+
+// SetCurrentView records which operating page the operators are on, so that kiosks
+// opened on the other one follow. Whichever page was opened most recently wins.
+//
+// This is display state, not field state: it does not gate anything, and a kiosk that
+// ignores it still works. It exists because a field can have several displays and they
+// are useless if they disagree about what is being run.
+func (arena *Arena) SetCurrentView(view string) {
+	if view != ViewMatchPlay && view != ViewFreePractice {
+		return
+	}
+
+	arena.mu.Lock()
+	changed := arena.currentView != view
+	arena.currentView = view
+	arena.mu.Unlock()
+
+	if changed {
+		arena.ArenaStatusNotifier.Notify()
+	}
+}
+
+// CurrentView is the operating page kiosks should be showing.
+func (arena *Arena) CurrentView() string {
+	arena.mu.Lock()
+	defer arena.mu.Unlock()
+	return arena.currentViewLocked()
+}
+
+// currentViewLocked assumes the arena lock is held. Free practice forces its own view:
+// match play disables every control in that state, so a kiosk left there is useless
+// regardless of where anyone navigated last.
+func (arena *Arena) currentViewLocked() string {
+	if arena.MatchState == FreePractice {
+		return ViewFreePractice
+	}
+	if arena.currentView == "" {
+		return ViewMatchPlay
+	}
+	return arena.currentView
+}
+
 // of AUTO and drives both the HUB lighting and the game data sent to driver stations,
 // so a mid-match change would desynchronise them.
 func (arena *Arena) SetAutoWinnerMode(mode AutoWinnerMode) error {
+	arena.mu.Lock()
+	defer arena.mu.Unlock()
+
 	switch arena.MatchState {
 	case PreMatch, PostMatch, FreePractice:
 		arena.AutoWinnerMode = mode

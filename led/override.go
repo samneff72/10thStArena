@@ -51,9 +51,14 @@ func (controller *Controller) SetLayout(red, blue []FixtureSpec) error {
 }
 
 // UseDefaultLayout restores upstream's full-field layout: eight fixtures per alliance
-// across four sides of each goal.
+// across four sides of each goal, all on one universe.
+//
+// Upstream also carries a two-universe variant, selected by its own SetUniverseMode.
+// Nothing here calls that yet -- the practice-field path splits universes per alliance
+// through SetLayout instead -- so a field wanting the full layout across two universes
+// would wire SetUniverseMode to a setting rather than change this.
 func (controller *Controller) UseDefaultLayout() {
-	controller.fixtures = defaultFixtureLayout
+	controller.fixtures = singleUniverseFixtureLayout
 	controller.universes = map[int]*universe{}
 }
 

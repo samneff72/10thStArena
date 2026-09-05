@@ -9,6 +9,7 @@ import (
 	"github.com/team841/bioarena/hardware"
 	"github.com/team841/bioarena/model"
 	"github.com/stretchr/testify/assert"
+	"sync"
 	"testing"
 	"time"
 )
@@ -1105,4 +1106,314 @@ func TestPlcMatchCycleEvergreen(t *testing.T) {
 	assert.Equal(t, PostMatch, arena.MatchState)
 	assert.Equal(t, [4]bool{false, false, false, false}, plc.stackLights)
 	assert.Equal(t, false, plc.fieldResetLight)
+}
+
+// A driver station is identified by its team number, and both the station lookup and the
+// UDP receive path find a station by scanning for a matching team. Go randomises map
+// iteration, so one team in two stations makes those lookups nondeterministic: two driver
+// stations contend for one connection and telemetry lands on whichever station the map
+// happens to yield. Reject the assignment instead of misbehaving silently.
+func TestSubstituteTeamsRejectsDuplicates(t *testing.T) {
+	arena := setupTestArena(t)
+	for _, id := range []int{841, 9841, 1323} {
+		assert.Nil(t, arena.Database.CreateTeam(&model.Team{Id: id}))
+	}
+
+	err := arena.SubstituteTeams(841, 841, 0, 0, 0, 0)
+	if assert.NotNil(t, err) {
+		assert.Contains(t, err.Error(), "more than one station")
+	}
+
+	// Across alliances counts too -- the collision is the team number, not the side.
+	err = arena.SubstituteTeams(841, 0, 0, 841, 0, 0)
+	assert.NotNil(t, err)
+
+	// Distinct numbers are fine, which is how a second robot of the same team runs.
+	assert.Nil(t, arena.SubstituteTeams(841, 9841, 1323, 0, 0, 0))
+	assert.Equal(t, 841, arena.AllianceStations["R1"].Team.Id)
+	assert.Equal(t, 9841, arena.AllianceStations["R2"].Team.Id)
+}
+
+// Empty stations are team ID 0 and there are normally several, so they must not trip the
+// duplicate check.
+func TestSubstituteTeamsAllowsMultipleEmptyStations(t *testing.T) {
+	arena := setupTestArena(t)
+	assert.Nil(t, arena.Database.CreateTeam(&model.Team{Id: 841}))
+
+	assert.Nil(t, arena.SubstituteTeams(841, 0, 0, 0, 0, 0))
+	assert.Nil(t, arena.SubstituteTeams(0, 0, 0, 0, 0, 0))
+}
+
+// The field returns to PreMatch on its own. Clearing used to require an operator action,
+// which stranded the field whenever the operator lost the web UI at match end -- as they
+// do every round when running field control from a driver station laptop, since the FRC
+// Driver Station releases its IP configuration when a match ends.
+func TestPostMatchAutoClearsAfterTimerExpiry(t *testing.T) {
+	arena := setupTestArena(t)
+	assert.Nil(t, arena.Database.CreateTeam(&model.Team{Id: 841}))
+	// Register through SubstituteTeams rather than assignTeam: ClearMatch preserves the
+	// assignments from CurrentMatch, which only the registration path populates.
+	assert.Nil(t, arena.SubstituteTeams(841, 0, 0, 0, 0, 0))
+	for _, station := range []string{"R2", "R3", "B1", "B2", "B3"} {
+		arena.AllianceStations[station].Bypass.Store(true)
+	}
+	arena.AllianceStations["R1"].DsConn = &DriverStationConnection{TeamId: 841}
+	arena.AllianceStations["R1"].DsConn.RobotLinked = true
+
+	assert.Nil(t, arena.StartMatch())
+
+	// The first Update processes StartMatch, which sets MatchStartTime to now -- so the
+	// clock can only be rewound after it. The machine then advances one period per
+	// Update, so run it forward until it settles in PostMatch.
+	arena.Update()
+	arena.MatchStartTime = time.Now().Add(-game.GetDurationToTeleopEnd())
+	for i := 0; i < 10 && arena.MatchState != PostMatch; i++ {
+		arena.Update()
+	}
+	assert.Equal(t, PostMatch, arena.MatchState)
+
+	// Still dwelling immediately after the match, so results stay on screen.
+	arena.Update()
+	assert.Equal(t, PostMatch, arena.MatchState)
+
+	// Cleared once the dwell elapses, without anyone touching the UI.
+	arena.postMatchStartTime = time.Now().Add(-postMatchAutoClearDelaySec * time.Second)
+	arena.Update()
+	assert.Equal(t, PreMatch, arena.MatchState)
+
+	// Team assignments survive, so the next practice round needs no re-registration.
+	assert.Equal(t, 841, arena.AllianceStations["R1"].Team.Id)
+}
+
+// An aborted match reaches PostMatch by a different path and must clear the same way.
+func TestPostMatchAutoClearsAfterAbort(t *testing.T) {
+	arena := setupTestArena(t)
+	for _, station := range []string{"R1", "R2", "R3", "B1", "B2", "B3"} {
+		arena.AllianceStations[station].Bypass.Store(true)
+	}
+
+	assert.Nil(t, arena.StartMatch())
+	arena.Update()
+	assert.Nil(t, arena.AbortMatch())
+	assert.Equal(t, PostMatch, arena.MatchState)
+
+	arena.Update()
+	assert.Equal(t, PostMatch, arena.MatchState, "should dwell before clearing")
+
+	arena.postMatchStartTime = time.Now().Add(-postMatchAutoClearDelaySec * time.Second)
+	arena.Update()
+	assert.Equal(t, PreMatch, arena.MatchState)
+}
+
+// Clearing manually before the dwell elapses must not be undone or double-applied.
+func TestPostMatchManualClearStillWorks(t *testing.T) {
+	arena := setupTestArena(t)
+	for _, station := range []string{"R1", "R2", "R3", "B1", "B2", "B3"} {
+		arena.AllianceStations[station].Bypass.Store(true)
+	}
+
+	assert.Nil(t, arena.StartMatch())
+	arena.Update()
+	assert.Nil(t, arena.AbortMatch())
+	assert.Nil(t, arena.ClearMatch())
+	assert.Equal(t, PreMatch, arena.MatchState)
+
+	// The stale timestamp must not drag the field out of PreMatch on the next tick.
+	arena.postMatchStartTime = time.Now().Add(-postMatchAutoClearDelaySec * time.Second)
+	arena.Update()
+	assert.Equal(t, PreMatch, arena.MatchState)
+}
+
+// Bypass survives a clear, alongside the team assignments. A practice field runs the
+// same lineup round after round, and with the field now clearing itself the operator
+// would otherwise re-bypass the empty stations after every match.
+func TestClearMatchPreservesBypass(t *testing.T) {
+	arena := setupTestArena(t)
+	assert.Nil(t, arena.Database.CreateTeam(&model.Team{Id: 841}))
+	assert.Nil(t, arena.SubstituteTeams(841, 0, 0, 0, 0, 0))
+
+	assert.Equal(t, 5, arena.BypassEmptyStations())
+	arena.AllianceStations["R1"].DsConn = &DriverStationConnection{TeamId: 841}
+	arena.AllianceStations["R1"].DsConn.RobotLinked = true
+
+	assert.Nil(t, arena.StartMatch())
+	arena.Update()
+	assert.Nil(t, arena.AbortMatch())
+	assert.Nil(t, arena.ClearMatch())
+
+	// The occupied station stays live and the five empty ones stay bypassed, so the next
+	// round is startable without touching anything.
+	assert.False(t, arena.AllianceStations["R1"].Bypass.Load())
+	for _, station := range []string{"R2", "R3", "B1", "B2", "B3"} {
+		assert.True(t, arena.AllianceStations[station].Bypass.Load(), "station %s lost its bypass", station)
+	}
+	assert.Equal(t, 841, arena.AllianceStations["R1"].Team.Id)
+
+	// Readiness itself is not asserted here: Update recalculates RobotLinked from packet
+	// timing, so a stub connection goes stale and only a real driver station would keep
+	// the station ready. Bypass state is what this test is about.
+}
+
+// An operator bypass of an occupied station is intent, not a side effect of empty
+// stations, and must survive too.
+func TestClearMatchPreservesManualBypassOfOccupiedStation(t *testing.T) {
+	arena := setupTestArena(t)
+	assert.Nil(t, arena.Database.CreateTeam(&model.Team{Id: 841}))
+	assert.Nil(t, arena.SubstituteTeams(841, 0, 0, 0, 0, 0))
+	arena.BypassEmptyStations()
+	arena.AllianceStations["R1"].Bypass.Store(true)
+
+	assert.Nil(t, arena.StartMatch())
+	arena.Update()
+	assert.Nil(t, arena.AbortMatch())
+	assert.Nil(t, arena.ClearMatch())
+
+	assert.True(t, arena.AllianceStations["R1"].Bypass.Load(), "operator bypass was cleared")
+}
+
+// Two operators driving the field at once, against a running match loop and the periodic
+// station-port poll. Nothing serialised these before: sendDsPacket and
+// recoverMissingDriverStations both read Team.Id after a nil check, while assignTeam
+// clears Team from a web goroutine -- straddle that and the process panics, taking the
+// field down mid-session.
+//
+// This exercises the interleaving rather than proving its absence, which needs the race
+// detector and so cgo. It does catch deadlocks, the likelier mistake when introducing a
+// lock, and it covers the paths reachable from the arena loop and from background
+// goroutines.
+func TestConcurrentOperatorsDoNotDeadlockOrPanic(t *testing.T) {
+	arena := setupTestArena(t)
+	for _, id := range []int{841, 9841} {
+		assert.Nil(t, arena.Database.CreateTeam(&model.Team{Id: id}))
+	}
+
+	// The match loop and the periodic poll run until the operators finish. They are
+	// waited on separately: folding them into the operators' WaitGroup makes the wait
+	// circular, since they only stop once that wait has already returned.
+	stop := make(chan struct{})
+	var background sync.WaitGroup
+
+	background.Add(1)
+	go func() {
+		defer background.Done()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				arena.Update()
+				// The real loop cadence. Spinning starves the operators and is
+				// indistinguishable from a deadlock.
+				time.Sleep(time.Millisecond)
+			}
+		}
+	}()
+
+	background.Add(1)
+	go func() {
+		defer background.Done()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				arena.pollStationPortLinks()
+				time.Sleep(time.Millisecond)
+			}
+		}
+	}()
+
+	var operators sync.WaitGroup
+	for i := 0; i < 2; i++ {
+		operators.Add(1)
+		go func(operator int) {
+			defer operators.Done()
+			for n := 0; n < 50; n++ {
+				// Errors are expected and ignored: the state guards reject commands that
+				// do not apply, which is the right outcome when operators disagree.
+				if operator == 0 {
+					_ = arena.SubstituteTeams(841, 0, 0, 9841, 0, 0)
+					arena.BypassEmptyStations()
+					_ = arena.StartMatch()
+					arena.DisableField()
+				} else {
+					_ = arena.SetAutoWinnerMode(AutoWinnerForceRed)
+					_ = arena.AbortMatch()
+					_ = arena.ClearMatch()
+					arena.EnableField()
+				}
+			}
+		}(i)
+	}
+
+	operatorsDone := make(chan struct{})
+	go func() {
+		operators.Wait()
+		close(operatorsDone)
+	}()
+
+	select {
+	case <-operatorsDone:
+	case <-time.After(20 * time.Second):
+		t.Fatal("timed out -- the arena lock deadlocked under concurrent operators")
+	}
+
+	close(stop)
+	backgroundDone := make(chan struct{})
+	go func() {
+		background.Wait()
+		close(backgroundDone)
+	}()
+	select {
+	case <-backgroundDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("a background loop did not stop -- it is stuck on the arena lock")
+	}
+
+	// The field is still in a state the guards recognise rather than something torn.
+	assert.Contains(
+		t,
+		[]MatchState{PreMatch, StartMatch, WarmupPeriod, AutoPeriod, PausePeriod, TeleopPeriod, PostMatch},
+		arena.MatchState,
+	)
+}
+
+// Several displays on one field are useless if they disagree about what is being run, so
+// the arena records which operating page was opened most recently and the kiosks follow.
+func TestCurrentView(t *testing.T) {
+	arena := setupTestArena(t)
+
+	// Match play until told otherwise, so a field that has never navigated still agrees.
+	assert.Equal(t, ViewMatchPlay, arena.CurrentView())
+
+	arena.SetCurrentView(ViewFreePractice)
+	assert.Equal(t, ViewFreePractice, arena.CurrentView())
+
+	arena.SetCurrentView(ViewMatchPlay)
+	assert.Equal(t, ViewMatchPlay, arena.CurrentView())
+
+	// Anything unrecognised is ignored rather than stranding every kiosk on a page that
+	// does not exist.
+	arena.SetCurrentView("setup/settings")
+	assert.Equal(t, ViewMatchPlay, arena.CurrentView())
+	arena.SetCurrentView("")
+	assert.Equal(t, ViewMatchPlay, arena.CurrentView())
+}
+
+// Free practice overrides the recorded view: match play disables every control in that
+// state, so a kiosk left there is useless no matter where anyone navigated last.
+func TestCurrentViewForcedByFreePractice(t *testing.T) {
+	arena := setupTestArena(t)
+	arena.SetCurrentView(ViewMatchPlay)
+
+	assert.Nil(t, arena.EnterFreePractice())
+	assert.Equal(t, ViewFreePractice, arena.CurrentView())
+
+	// Selecting match play while free practice runs does not move anyone.
+	arena.SetCurrentView(ViewMatchPlay)
+	assert.Equal(t, ViewFreePractice, arena.CurrentView())
+
+	// Once free practice ends the recorded selection applies again.
+	assert.Nil(t, arena.ExitFreePractice())
+	assert.Equal(t, ViewMatchPlay, arena.CurrentView())
 }

@@ -97,7 +97,20 @@ const getTeamNumber = function (station) {
 
 // --- WebSocket message handlers ---
 
+// Set once a navigation is under way, so the broadcasts that arrive before the page
+// unloads do not each trigger another one.
+let leavingForOtherView = false;
+
 const handleArenaStatus = function (data) {
+  // Every kiosk shows the same operating page. The server records whichever of them was
+  // opened most recently, and displays sitting on the other one follow, so a field with
+  // several screens does not have them disagreeing about what is being run.
+  if (data.CurrentView && data.CurrentView !== "match_play" && !leavingForOtherView) {
+    leavingForOtherView = true;
+    window.location.href = "/" + data.CurrentView;
+    return;
+  }
+
   for (const station of stations) {
     const st = data.AllianceStations[station];
     if (!st) continue;
@@ -122,6 +135,23 @@ const handleArenaStatus = function (data) {
     card.dataset.astop = st.AStop ? "true" : "false";
     estopBtn.dataset.active = st.EStop ? "true" : "false";
     estopBtn.textContent = st.EStop ? "UN-STOP" : "E-STOP";
+
+    // Spell out which stop is active. The card already changes colour, but an operator
+    // who does not know the palette cannot read a background alone -- and A-stop's is a
+    // muted olive that is easy to miss entirely. E-stop wins when both are latched,
+    // matching the card styling.
+    const stopEl = document.getElementById("stop-" + station);
+    if (st.EStop) {
+      stopEl.textContent = "E-STOP";
+      stopEl.dataset.kind = "estop";
+      stopEl.hidden = false;
+    } else if (st.AStop) {
+      stopEl.textContent = "A-STOP";
+      stopEl.dataset.kind = "astop";
+      stopEl.hidden = false;
+    } else {
+      stopEl.hidden = true;
+    }
 
     // Bypass checkbox.
     bypassChk.checked = st.Bypass;

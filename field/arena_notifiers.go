@@ -95,6 +95,10 @@ func (arena *Arena) generateArenaStatusMessage() any {
 		FreePracticeReconfiguring bool
 		FieldDisabled             bool
 		StationLinksKnown         bool
+		// CurrentView is the operating page every kiosk should be showing, so that a
+		// field with several displays does not have them disagreeing about what is
+		// being run.
+		CurrentView string
 	}{
 		arena.CurrentMatch.Id,
 		stationViews,
@@ -110,6 +114,8 @@ func (arena *Arena) generateArenaStatusMessage() any {
 		arena.freePracticeReconfiguring.Load(),
 		arena.fieldDisabled.Load(),
 		arena.stationLinksKnown.Load(),
+		// Locked variant: this generator runs from Update with the arena lock held.
+		arena.currentViewLocked(),
 	}
 }
 

@@ -71,6 +71,7 @@ function buildDom() {
       (s) => `
       <div id="card-${s}">
         <span id="ds-${s}">—</span>
+        <span id="stop-${s}" hidden></span>
         <button id="estop-${s}" data-station="${s}">E-STOP</button>
         <input type="checkbox" id="bypass-${s}">
         <input type="number" id="team-${s}">
@@ -274,6 +275,55 @@ describe("handleArenaStatus — E-Stop card state", () => {
     expect(document.getElementById("card-R3").dataset.estop).toBe("false");
     expect(document.getElementById("estop-R3").textContent).toBe("E-STOP");
   });
+
+  // The card background already carries the state, but only for someone who knows the
+  // palette -- A-stop's muted olive especially. Name the stop that is latched.
+  test("names the latched stop on the card", () => {
+    handleArenaStatus(
+      makeStatus(0, false, {
+        R1: { DsConn: null, EStop: true, AStop: false, Bypass: false, Team: null },
+        R2: { DsConn: null, EStop: false, AStop: true, Bypass: false, Team: null },
+      })
+    );
+
+    const estop = document.getElementById("stop-R1");
+    expect(estop.hidden).toBe(false);
+    expect(estop.textContent).toBe("E-STOP");
+    expect(estop.dataset.kind).toBe("estop");
+
+    const astop = document.getElementById("stop-R2");
+    expect(astop.hidden).toBe(false);
+    expect(astop.textContent).toBe("A-STOP");
+    expect(astop.dataset.kind).toBe("astop");
+
+    // Clear stations show nothing at all.
+    expect(document.getElementById("stop-R3").hidden).toBe(true);
+  });
+
+  // A-stop is always subsumed by e-stop, matching the card styling, which suppresses the
+  // A-stop background when both are latched.
+  test("shows only E-STOP when both stops are latched", () => {
+    handleArenaStatus(
+      makeStatus(0, false, {
+        B2: { DsConn: null, EStop: true, AStop: true, Bypass: false, Team: null },
+      })
+    );
+    const stop = document.getElementById("stop-B2");
+    expect(stop.hidden).toBe(false);
+    expect(stop.textContent).toBe("E-STOP");
+  });
+
+  test("hides the badge again once the stop clears", () => {
+    handleArenaStatus(
+      makeStatus(0, false, {
+        B3: { DsConn: null, EStop: true, AStop: false, Bypass: false, Team: null },
+      })
+    );
+    expect(document.getElementById("stop-B3").hidden).toBe(false);
+
+    handleArenaStatus(makeStatus(0, false));
+    expect(document.getElementById("stop-B3").hidden).toBe(true);
+  });
 });
 
 // ---- Field E-Stop overlay ---------------------------------------------------
@@ -394,5 +444,53 @@ describe("handleMatchLoad", () => {
       Teams: { R1: null, R2: null, R3: null, B1: null, B2: null, B3: null },
     });
     expect(document.getElementById("testMatchNameWrap").style.display).toBe("none");
+  });
+});
+
+// ---- Shared kiosk view -------------------------------------------------------
+
+// Several displays on one field are useless if they disagree about what is being run.
+// The server records whichever operating page was opened most recently and every kiosk
+// follows it.
+describe("handleArenaStatus — shared kiosk view", () => {
+  let originalLocation;
+
+  beforeEach(() => {
+    originalLocation = window.location;
+    delete window.location;
+    window.location = { href: "" };
+  });
+
+  afterEach(() => {
+    window.location = originalLocation;
+  });
+
+  test("follows when another kiosk selects free practice", () => {
+    const status = makeStatus(0, false);
+    status.CurrentView = "free_practice";
+    handleArenaStatus(status);
+    expect(window.location.href).toBe("/free_practice");
+  });
+
+  test("stays put when the shared view is already this page", () => {
+    const status = makeStatus(0, false);
+    status.CurrentView = "match_play";
+    handleArenaStatus(status);
+    expect(window.location.href).toBe("");
+  });
+
+  // An older server, or a message predating the field, must not strand the kiosk.
+  test("stays put when no view is reported", () => {
+    handleArenaStatus(makeStatus(0, false));
+    expect(window.location.href).toBe("");
+  });
+
+  // The view is followed regardless of match state: free practice is set up while the
+  // arena is still in PreMatch, so keying off the state would eject the operator.
+  test("follows the view rather than the match state", () => {
+    const status = makeStatus(7 /* FREE_PRACTICE */, false);
+    status.CurrentView = "match_play";
+    handleArenaStatus(status);
+    expect(window.location.href).toBe("");
   });
 });
