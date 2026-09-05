@@ -21,6 +21,19 @@ import (
 
 const pingInterval = time.Second * 10
 
+// writeTimeout bounds a single websocket write.
+//
+// Without it a client that vanishes without closing -- a kiosk carried out of wifi range,
+// a display unplugged -- leaves a half-open connection. No FIN arrives, so the write blocks
+// as soon as the send buffer fills, and it blocks forever. The goroutine serving that client
+// is then stuck inside Write and stops draining its notifier channels, so every notifier
+// fills its buffer and logs a blocked listener on every event thereafter. The periodic ping
+// cannot rescue it either: the ping is a write too, behind the same mutex.
+//
+// Generous rather than tight. This is not a latency control -- it only has to be shorter
+// than "forever" for a dead connection to be noticed and the goroutine to exit.
+const writeTimeout = time.Second * 10
+
 // Wraps the Gorilla Websocket module so that we can define additional functions on it.
 type Websocket struct {
 	conn       *websocket.Conn
@@ -94,6 +107,13 @@ func (ws *Websocket) ReadWithTimeout(timeout time.Duration) (string, any, error)
 func (ws *Websocket) Write(messageType string, data any) error {
 	ws.writeMutex.Lock()
 	defer ws.writeMutex.Unlock()
+	// Bounded so a half-open connection fails instead of hanging this goroutine forever.
+	// A deadline error also puts the connection permanently in a failed state, which is
+	// what we want: the caller returns, its listeners are closed, and the notifiers reap
+	// them.
+	if err := ws.conn.SetWriteDeadline(time.Now().Add(writeTimeout)); err != nil {
+		return fmt.Errorf("Websocket write deadline error: %v", err)
+	}
 	err := ws.conn.WriteJSON(Message{messageType, data})
 	if err != nil {
 		// Include the caller of this method in the error message.

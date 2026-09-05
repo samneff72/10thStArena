@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"log"
 	"testing"
+	"time"
 )
 
 func TestNotifier(t *testing.T) {
@@ -88,4 +89,50 @@ func TestNotifyMultipleListeners(t *testing.T) {
 
 func generateTestMessage() any {
 	return "test message"
+}
+
+// A listener that is merely slow keeps its subscription. Its reader is mid-write every time
+// the buffer happens to be full, and dropping on the first miss would unsubscribe healthy
+// clients under load.
+func TestNotifierKeepsBrieflyBlockedListener(t *testing.T) {
+	notifier := NewNotifier("test", nil)
+	clock := time.Now()
+	notifier.now = func() time.Time { return clock }
+
+	listener := notifier.listen()
+	for i := 0; i < notifyBufferSize+3; i++ {
+		notifier.Notify()
+	}
+	assert.Len(t, notifier.listeners, 1, "a full listener must not be dropped immediately")
+
+	// Well inside the timeout, and then draining restores it.
+	clock = clock.Add(listenerBlockedTimeout / 2)
+	notifier.Notify()
+	assert.Len(t, notifier.listeners, 1)
+
+	<-listener
+	notifier.Notify()
+	assert.Zero(t, notifier.listeners[listener].blockedSince, "draining should clear the blocked spell")
+}
+
+// A client that has gone away -- a kiosk carried out of wifi range -- never drains, and
+// every event would otherwise log another failure for the life of the process.
+func TestNotifierDropsPersistentlyBlockedListener(t *testing.T) {
+	notifier := NewNotifier("test", nil)
+	clock := time.Now()
+	notifier.now = func() time.Time { return clock }
+
+	notifier.listen()
+	for i := 0; i < notifyBufferSize+1; i++ {
+		notifier.Notify()
+	}
+	assert.Len(t, notifier.listeners, 1)
+
+	clock = clock.Add(listenerBlockedTimeout)
+	notifier.Notify()
+	assert.Empty(t, notifier.listeners, "a listener blocked past the timeout should be dropped")
+
+	// Dropped, not closed: the reader still owns the channel and closes it on its way out.
+	// Notifying again must not panic on a send to a closed channel or a missing entry.
+	assert.NotPanics(t, func() { notifier.Notify() })
 }
