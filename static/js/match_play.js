@@ -130,6 +130,21 @@ const handleArenaStatus = function (data) {
       dsEl.dataset.ok = "false";
     }
 
+    // A team that is fully connected and still bypassed almost certainly should not be.
+    // Nothing else on the card says so: the DS pill goes green on link exactly as it would
+    // for a station that is going to play, and the bypass checkbox is small and easy to
+    // leave ticked from the previous match. Flag it on the one field the operator is
+    // reading anyway -- the team number.
+    const teamInput = document.getElementById("team-" + station);
+    const fullyConnected = Boolean(st.DsConn && st.DsConn.DsLinked && st.DsConn.RobotLinked);
+    if (fullyConnected && st.Bypass) {
+      teamInput.dataset.bypassWarn = "true";
+      teamInput.title = "Bypassed, but the driver station and robot are both connected";
+    } else {
+      delete teamInput.dataset.bypassWarn;
+      teamInput.title = "";
+    }
+
     // E-Stop state — card pulses red, button turns green to show it is active.
     card.dataset.estop = st.EStop ? "true" : "false";
     card.dataset.astop = st.AStop ? "true" : "false";

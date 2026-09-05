@@ -288,6 +288,33 @@ input[data-changed="true"], select[data-changed="true"] {
 .mp-team-input:disabled {
   opacity: 0.6;
 }
+/* A team that is fully connected and still bypassed. Nothing else on the card says this:
+   the DS pill goes green on link and the bypass checkbox is small and quiet, so a station
+   accidentally left bypassed looks healthy right up until it does not play the match. */
+.mp-team-input[data-bypass-warn="true"] {
+  animation: bypass-warn 1s step-end infinite;
+}
+@keyframes bypass-warn {
+  0% {
+    background: #b35c00;
+    border-color: #ffa733;
+    color: #fff;
+  }
+  50% {
+    background: #111;
+    border-color: #ffa733;
+    color: #ffa733;
+  }
+}
+/* Respect a reduced-motion preference: keep the colour, drop the flashing. */
+@media (prefers-reduced-motion: reduce) {
+  .mp-team-input[data-bypass-warn="true"] {
+    animation: none;
+    background: #b35c00;
+    border-color: #ffa733;
+    color: #fff;
+  }
+}
 .mp-card-ds {
   font-size: 11px;
   padding: 2px 4px;
