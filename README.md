@@ -1047,7 +1047,7 @@ kernel versions and hardware generations. Confirm on the Pi with `gpiodetect`, a
 - [docs/console.py](docs/console.py) — serial console for the field switch, standard library only; Linux and macOS.
 - [docs/chrony-bioarena.conf](docs/chrony-bioarena.conf) — chrony drop-in making the Pi the field's time source, so switch and controller logs can be correlated.
 - [docs/switch-bootstrap.py](docs/switch-bootstrap.py) — brings a factory or reset Catalyst to the point bioarena can configure it over Telnet: address, passwords, boot image. Console cable, one command.
-- [docs/sites/](docs/sites) — one record per deployed field: addresses, switch port map, and switch backup. [richmond.md](docs/sites/richmond.md) is the example to copy.
+- [docs/sites/](docs/sites) — one record per deployed field: addresses, switch port map, and switch backup. [richmond.md](docs/sites/richmond.md) is the example to copy; [oakland.md](docs/sites/oakland.md) is a second field being stood up.
 
 ## Contributing
 
