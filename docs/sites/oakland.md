@@ -5,19 +5,18 @@ field — the README describes the product, this describes how one instance of i
 
 Copied from [richmond.md](richmond.md). The addresses are identical to Richmond's and are
 not a choice — see [Addressing](#addressing). What differs between fields is the station
-count, the hardware, and how the e-stops are wired; those are marked **TBD** where this
-site has not settled them yet, to be filled in during bring-up rather than rediscovered.
+count, the hardware, and how the e-stops are wired.
 
 ## Field
 
 | | |
 |---|---|
-| Stations | **TBD** — how many driver stations are physically wired |
+| Stations | 6 — all of R1, R2, R3, B1, B2, B3 |
 | Management subnet | `10.0.100.0/24`, on VLAN 1 — the same as every field; see [Addressing](#addressing) |
 | Team networks | The switch routes and serves DHCP; bioarena configures it |
 
-Any station without a driver station needs **BYP** checked in Match Play, since bioarena
-always thinks in six stations.
+Every station is wired, so nothing needs **BYP** checked in Match Play. Richmond does, with
+only four; this field does not.
 
 ## Addressing
 
@@ -42,13 +41,15 @@ next person does not try to renumber Oakland to keep the two reachable at once.
 | Field controller Pi | `10.0.100.5` |
 | Switch (management) | `10.0.100.3` — set as **Switch Address** under Arena → Settings, with its Telnet password |
 | Field access point | `10.0.100.2` — set as **AP Address** under Arena → Settings. Backup `192.168.69.1`, where it turns up after a reset; the Pi and switch carry addresses in that subnet so the fallback stays reachable |
-| Red e-stop panel | `10.0.100.11` (**TBD** — installed?) |
-| Blue e-stop panel | `10.0.100.12` (**TBD** — installed?) |
-| Art-Net node | `10.0.100.100` (**TBD** — installed?) |
+| Red e-stop panel | `10.0.100.11` — planned, not yet installed |
+| Blue e-stop panel | `10.0.100.12` — planned, not yet installed |
+| Art-Net node | `10.0.100.100` — **TBD**, Hub LEDs not decided |
 
 ## Hardware
 
-**Field e-stop — wired to the controller's own GPIO**, not to a panel Pi.
+**Field e-stop — wired to the controller's own GPIO.** Separate from the alliance panels
+below: this is the field-wide stop, and it stays on the controller even once the panels are
+in. The panels handle per-station stops.
 
 | Contact | BCM pin | Setting |
 |---|---|---|
@@ -77,9 +78,31 @@ The service account needs the `gpio` group or it cannot open `/dev/gpiochip0` at
 `deploy-fms.sh` handles that, but group membership is taken at process start, so adding it
 by hand needs a restart rather than a settings save.
 
-**Switch — Catalyst 3560-CX**, **TBD** whether this site's unit has PoE. Richmond's does
-not, so its access point runs off an injector; check with `show power inline` before
-assuming. Hostname `bioSwitch` unless overridden at bootstrap.
+**E-stop panels — planned, not yet installed.** One Pi per alliance, red at `10.0.100.11`
+and blue at `10.0.100.12`, each powered over PoE from the switch via a PoE HAT. Deploy with
+`./deploy-panel.sh <bench-address> red`, where the argument is where the panel answers from
+your build machine and the alliance is what writes its static field address into the service
+file. Wiring and pin assignments are in
+[docs/hardware-wiring.md](../hardware-wiring.md); once installed, record this field's
+actual pin map here, since it need not match that document's example.
+
+**Hub LEDs — undecided.** If a DMX gateway is added it goes on Gi0/9 at `10.0.100.100`,
+inside the switch's excluded `.1`–`.125` range so a static there can never collide with a
+lease. Record the model and whether it speaks Art-Net or sACN, since that drives the
+checkbox under Arena → Settings → LEDs.
+
+**Switch — Catalyst 3560-CX**, PoE-capable, hostname `bioSwitch` unless overridden at
+bootstrap. Richmond's is a non-PoE SKU, so this is the one piece of hardware the two fields
+genuinely differ on.
+
+PoE here powers the **e-stop panel Pis** and nothing else. A Pi has no native PoE, so each
+panel needs a PoE HAT. PoE is on by default as `power inline auto`, so the ports need no
+configuration — but check the budget with `show power inline` before adding loads, since an
+8-port unit has little of it and a device that exceeds what is left simply never comes up,
+with no obvious error.
+
+**The access point is the exception and must not be powered from the switch** — see the
+access point section below.
 
 | Port | Role | Mode |
 |------|------|------|
@@ -107,8 +130,30 @@ brings the switch to the point bioarena can reach it, and bioarena pushes the VL
 portfast and routing on its first configuration.
 [switch_config.txt](../../switch_config.txt) records what the result looks like.
 
-**Access point — Vivid-Hosting VH-113.** **TBD** whether this unit wants an API token;
-Richmond's practice firmware exposes none, so its **AP Password** is blank.
+**Access point — Vivid-Hosting VH-113.** No API token; **AP Password** under
+Arena → Settings is blank, the same as Richmond. Confirm with
+`curl -s http://10.0.100.2/status` from the Pi — JSON back means leave it empty, a `401`
+means this build wants one after all.
+
+> **The AP takes passive 12 V from its own adapter. Do not let the switch power it.**
+> This is the one place Oakland's PoE switch is a hazard rather than a convenience. The
+> VH-113 is not an 802.3af/at device: it does not negotiate, and its injector puts 12 V on
+> the line unconditionally. Two separate risks follow — the switch sourcing PoE into a
+> device that never asked for it, and the passive injector feeding 12 V back toward a
+> switch port that is expecting to be the power source.
+>
+> Belt and braces, disable PoE on that port explicitly:
+>
+> ```
+> configure terminal
+> interface GigabitEthernet0/8
+> power inline never
+> end
+> ```
+>
+> Then `write memory`. Bioarena's baseline does not set this — it never emits a
+> `power inline` command — so it is a manual step that survives on the switch's saved
+> configuration. Re-check it after any `write erase`.
 
 ## Notes
 

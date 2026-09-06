@@ -511,6 +511,23 @@ Without an address in that subnet a reset AP is simply unreachable: nothing has 
 there, so there is nothing to ARP for and nothing to route through, and the badge sits at
 `UNKNOWN` however healthy the AP is.
 
+**The VH-113 takes passive 12 V from its own adapter, not 802.3af/at PoE.** It does not
+negotiate, and its injector puts 12 V on the line unconditionally. On a field whose switch
+is PoE-capable that is a hazard in both directions — the switch trying to source power into
+a device that never asked for it, and the injector feeding 12 V back toward a port expecting
+to be the supply. Power the AP from its own adapter and disable PoE on its port:
+
+```
+configure terminal
+interface GigabitEthernet0/8
+power inline never
+end
+```
+
+Then `write memory`. Bioarena never emits a `power inline` command, so this is a manual step
+that lives in the switch's saved configuration; re-check it after a `write erase`. A non-PoE
+switch needs none of this.
+
 **First-time VH-113 setup**
 
 1. Laptop straight into the AP, static `192.168.69.100/24`, browse `http://192.168.69.1` —
