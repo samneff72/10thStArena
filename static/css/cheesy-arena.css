@@ -534,3 +534,23 @@ input[data-changed="true"], select[data-changed="true"] {
   from { background-position: 0 0; }
   to   { background-position: 34px 0; }
 }
+
+/* Header LAN address — how to reach this controller from a laptop.
+   Deliberately quiet: it is reference information an operator reads once when they need to
+   connect, not status that should compete with the field's own badges. */
+.nav-lan-address {
+  cursor: default;
+  white-space: nowrap;
+}
+.nav-lan-label {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #888;
+  margin-right: 4px;
+}
+.nav-lan-value {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: #bbb;
+}

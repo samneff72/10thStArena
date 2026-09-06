@@ -35,6 +35,17 @@ Base template used by most pages to include common resources and optionally rend
             </li>
           </ul>
           <ul class="navbar-nav ms-auto">
+            {{/* How to reach this controller from a laptop. The field address is the same
+                 on every field and is not a route anyone else has; this is the one that
+                 changes and that nobody can guess, and it is otherwise found by walking to
+                 the Pi with a keyboard. */}}
+            <li class="navbar-item">
+              <span class="nav-link nav-lan-address"
+                title="Reach this field controller at this address — ssh, deploy, or open the web UI. Not the field network.">
+                <span class="nav-lan-label">LAN</span>
+                <span class="nav-lan-value">{{fmsLanAddress}}</span>
+              </span>
+            </li>
             <li class="navbar-item">
               <a class="nav-link" href="#" onclick="$('#aboutPage').modal('show');">About</a>
             </li>

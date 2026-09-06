@@ -19,6 +19,7 @@ import (
 	"github.com/team841/bioarena/field"
 	"github.com/team841/bioarena/game"
 	"github.com/team841/bioarena/model"
+	"github.com/team841/bioarena/network"
 )
 
 const (
@@ -36,6 +37,20 @@ func NewWeb(arena *field.Arena) *Web {
 
 	// Helper functions that can be used inside templates.
 	web.templateHelpers = template.FuncMap{
+		// The address someone needs to reach this controller, for the page header.
+		//
+		// Not the field address: every field is 10.0.100.0/24 with the Pi fixed at
+		// 10.0.100.5, so it identifies nothing and is not a route anyone's laptop has.
+		// What is worth showing is whatever the Pi picked up on the bench or workshop
+		// network, which changes and which nobody can guess -- and which is otherwise
+		// found by walking to the Pi, plugging in a keyboard, and running "hostname -I".
+		//
+		// Recomputed per render rather than cached. Page loads are rare on a kiosk, and a
+		// stale address here would be worse than none: it is read precisely when someone
+		// is trying to connect.
+		"fmsLanAddress": func() string {
+			return network.FormatOffFieldAddresses(network.OffFieldAddresses())
+		},
 		// Allows sub-templates to be invoked with multiple arguments.
 		"dict": func(values ...any) (map[string]any, error) {
 			if len(values)%2 != 0 {
