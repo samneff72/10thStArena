@@ -447,3 +447,33 @@ func TestConfigureSwitchDnsServer(t *testing.T) {
 	assert.NotContains(t, commands.at(3), "dns-server")
 	assert.Contains(t, commands.at(3), "default-router 10.8.41.4\nlease 7\n")
 }
+
+// One shut for every selected port and one reopen, so six stations cost the same two round
+// trips and one pause as one station does. The old per-station cycle did this six times.
+func TestCycleStationPortsBatchesEveryPort(t *testing.T) {
+	sw := newIncrementalTestSwitch(9200)
+
+	commands := mockTelnetMulti(t, sw.port, 2)
+	assert.Nil(t, sw.CycleStationPorts([6]bool{true, false, false, true, false, true}))
+
+	assert.Contains(t, commands.at(0), "interface GigabitEthernet0/1\nshutdown\n")
+	assert.Contains(t, commands.at(0), "interface GigabitEthernet0/4\nshutdown\n")
+	assert.Contains(t, commands.at(0), "interface GigabitEthernet0/6\nshutdown\n")
+	assert.NotContains(t, commands.at(0), "GigabitEthernet0/2")
+
+	assert.Contains(t, commands.at(1), "interface GigabitEthernet0/1\nno shutdown\n")
+	assert.Contains(t, commands.at(1), "interface GigabitEthernet0/6\nno shutdown\n")
+}
+
+// Nothing selected must not open a Telnet session at all.
+func TestCycleStationPortsWithNoStationsIsANoOp(t *testing.T) {
+	sw := newIncrementalTestSwitch(9210)
+	assert.Nil(t, sw.CycleStationPorts([6]bool{}))
+}
+
+// An absent switch is not a broken one, and a port cycle it cannot do must say so rather
+// than hanging the caller on a dial that cannot succeed.
+func TestCycleStationPortsWithoutAddress(t *testing.T) {
+	sw := NewSwitch(SwitchConfig{Address: "", Password: "password"})
+	assert.ErrorIs(t, sw.CycleStationPorts([6]bool{true}), errSwitchNotConfigured)
+}

@@ -121,6 +121,10 @@ Gi0/1–6 are not a site choice. [`dsPortInterfaces`](../../network/switch.go) h
 in station order, and the baseline builds each one as that station's access port. Wire a
 station elsewhere and its laptop lands on the wrong team's VLAN.
 
+Clearing a match bounces the link on every station that has a team registered, which is what
+makes its driver station laptop ask for an address again — it drops the one it had when the
+match ended. Nothing else cycles these ports.
+
 Gi0/7 and Gi0/8 are interchangeable — both are configured identically as trunks carrying
 VLANs 1 and 10–60, and nothing in the code distinguishes them.
 

@@ -339,9 +339,16 @@ state nobody put there.
 for a switch you would rather set up by hand.
 
 Only the stations whose team changed are rebuilt, so the others keep their VLAN, their
-addresses and their driver station connections. A laptop whose station did change re-requests
-an address when its driver station reconnects; bioarena does not cycle the switch port to
-force it, because that cost seconds on every match load.
+addresses and their driver station connections. Nothing is cycled at match load: bioarena
+used to shut and reopen each rebuilt station's port to force a fresh address, and that cost
+seconds every time for a renewal usually not needed.
+
+**Clearing a match does cycle them**, which is different and is the case it was for. Driver
+station software releases its address when the match ends, and Windows then sits unaddressed
+until something changes — the link event is what prompts it to ask again. So every station
+with a team registered has its port bounced once, batched into a single shut and reopen, at
+the moment the match is already over and nobody is driving. Stations with no team are left
+alone; they have no subnet to get an address from anyway.
 
 The first configuration after a restart rebuilds everything, because the switch outlives
 the process and may have been changed by hand in between.

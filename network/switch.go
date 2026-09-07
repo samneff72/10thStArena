@@ -417,6 +417,57 @@ func (sw *Switch) applyBaseline() error {
 	return nil
 }
 
+// CycleStationPorts shuts and reopens the selected stations' driver station ports.
+//
+// Driver station software releases its address at the end of a match, by its own logic, and
+// Windows then sits there unaddressed until something changes. Replugging the cable works
+// because the link event is what prompts a fresh DHCP request; so does this, without anyone
+// walking to six laptops.
+//
+// Called at the end of a match and nowhere else. Bioarena used to cycle a station's port on
+// every VLAN change and again from a background rescue poll, which cost seconds on every
+// match load for a renewal that was usually not needed. Once, when the match is already
+// over and nobody is driving, it costs nothing anyone is waiting on.
+//
+// Batched: one shut for every selected port and one reopen, so six stations cost the same
+// two Telnet round trips and one pause as one station does.
+func (sw *Switch) CycleStationPorts(stations [6]bool) error {
+	sw.mutex.Lock()
+	defer sw.mutex.Unlock()
+
+	if sw.address == "" {
+		return errSwitchNotConfigured
+	}
+
+	down := portCommands(stations, "shutdown")
+	if down == "" {
+		return nil
+	}
+
+	if _, err := sw.runConfigCommand(down); err != nil {
+		return fmt.Errorf("shutting driver station ports: %w", err)
+	}
+	time.Sleep(sw.configPauseDuration)
+	if _, err := sw.runConfigCommand(portCommands(stations, "no shutdown")); err != nil {
+		// Ports left down are worse than ports never touched: every driver station behind
+		// them is dead until someone notices. Reported loudly rather than swallowed.
+		return fmt.Errorf("reopening driver station ports: %w", err)
+	}
+	return nil
+}
+
+// portCommands builds an interface block applying the given verb to each selected station's
+// driver station port.
+func portCommands(stations [6]bool, verb string) string {
+	command := ""
+	for i, selected := range stations {
+		if selected {
+			command += fmt.Sprintf("interface %s\n%s\n", dsPortInterfaces[i], verb)
+		}
+	}
+	return command
+}
+
 // fail marks the configuration as failed. The switch is left half configured, so the
 // recorded state is no longer trustworthy and the next call reconciles in full.
 func (sw *Switch) fail(err error) error {

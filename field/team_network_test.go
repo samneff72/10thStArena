@@ -24,10 +24,36 @@ type fakeTeamNetwork struct {
 	statusValue string
 	links       [6]bool
 	linksErr    error
+	cycled      [][6]bool
+	cycleErr    error
 }
 
 func (f *fakeTeamNetwork) GetStationPortLinks() ([6]bool, error) {
 	return f.links, f.linksErr
+}
+
+func (f *fakeTeamNetwork) CycleStationPorts(stations [6]bool) error {
+	f.mutex.Lock()
+	defer f.mutex.Unlock()
+	f.cycled = append(f.cycled, stations)
+	return f.cycleErr
+}
+
+// cycledPorts reports the port-cycle requests that reached the switch, waiting briefly for
+// the goroutine that makes them.
+func (f *fakeTeamNetwork) cycledPorts() [][6]bool {
+	for i := 0; i < 50; i++ {
+		f.mutex.Lock()
+		n := len(f.cycled)
+		f.mutex.Unlock()
+		if n > 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	f.mutex.Lock()
+	defer f.mutex.Unlock()
+	return append([][6]bool(nil), f.cycled...)
 }
 
 func (f *fakeTeamNetwork) ConfigureTeamEthernet(teams [6]*model.Team) error {
@@ -201,4 +227,53 @@ func (f *fakeTeamNetwork) lastApplied(t *testing.T) [6]*model.Team {
 		"expected the wired network to be configured",
 	)
 	return last
+}
+
+// --- driver station address renewal ---
+
+// Driver station software releases its address at the end of a match and Windows then sits
+// unaddressed. Bouncing the link is what prompts a fresh DHCP request, so clearing the match
+// has to do it or the operator waits out a retry before the next round.
+func TestClearMatchCyclesOccupiedStationPorts(t *testing.T) {
+	arena, fake := setupTeamNetworkTestArena(t)
+	assert.NoError(t, arena.Database.CreateTeam(&model.Team{Id: 841}))
+	assert.NoError(t, arena.Database.CreateTeam(&model.Team{Id: 254}))
+	assert.NoError(t, arena.assignTeam(841, "R1"))
+	assert.NoError(t, arena.assignTeam(254, "B2"))
+
+	arena.MatchState = PostMatch
+	assert.NoError(t, arena.ClearMatch())
+
+	cycled := fake.cycledPorts()
+	if assert.Len(t, cycled, 1, "one batched cycle, not one per station") {
+		// R1 and B2 only. An empty station has no subnet to get an address from, so
+		// bouncing it accomplishes nothing and only disturbs whatever is plugged in.
+		assert.Equal(t, [6]bool{true, false, false, false, true, false}, cycled[0])
+	}
+}
+
+// A field with nothing registered has nothing to renew, and should not touch the switch.
+func TestClearMatchWithNoTeamsDoesNotCyclePorts(t *testing.T) {
+	arena, fake := setupTeamNetworkTestArena(t)
+
+	arena.MatchState = PostMatch
+	assert.NoError(t, arena.ClearMatch())
+
+	time.Sleep(50 * time.Millisecond)
+	assert.Empty(t, fake.cycled, "no teams, so no ports worth cycling")
+}
+
+// Network security off means bioarena leaves the hardware alone entirely, port cycling
+// included -- otherwise a bench run would sit waiting on a Telnet dial that cannot succeed.
+func TestClearMatchSkipsPortCycleWhenSecurityDisabled(t *testing.T) {
+	arena, fake := setupTeamNetworkTestArena(t)
+	assert.NoError(t, arena.Database.CreateTeam(&model.Team{Id: 841}))
+	assert.NoError(t, arena.assignTeam(841, "R1"))
+	arena.EventSettings.NetworkSecurityEnabled = false
+
+	arena.MatchState = PostMatch
+	assert.NoError(t, arena.ClearMatch())
+
+	time.Sleep(50 * time.Millisecond)
+	assert.Empty(t, fake.cycled)
 }

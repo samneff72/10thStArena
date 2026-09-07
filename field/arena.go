@@ -176,6 +176,7 @@ func NewArena(dbPath string) (*Arena, error) {
 type teamNetwork interface {
 	ConfigureTeamEthernet(teams [6]*model.Team) error
 	GetStationPortLinks() ([6]bool, error)
+	CycleStationPorts(stations [6]bool) error
 	GetStatus() string
 }
 
@@ -536,6 +537,8 @@ func (arena *Arena) clearMatchLocked() error {
 			arena.AllianceStations[station].Bypass.Store(wasBypassed)
 		}
 	}()
+
+	arena.cycleStationPortsForRenewal()
 
 	return arena.LoadMatch(&model.Match{
 		Type:      model.Test,
@@ -988,6 +991,45 @@ func (arena *Arena) setupNetwork(teams [6]*model.Team, isPreload bool) {
 // that, registering teams one at a time queues a configuration per registration, and
 // whichever goroutine happens to acquire the hardware last decides what the field ends up
 // with -- which need not be the most recent team list.
+// cycleStationPortsForRenewal prompts the driver station laptops to ask for an address
+// again, by bouncing the link on the ports they are plugged into.
+//
+// Driver station software releases its address at the end of a match, and Windows then sits
+// unaddressed until something changes. Without this the operator waits out a DHCP retry, or
+// walks round replugging cables, before the next round can start.
+//
+// Only stations with a team registered: an empty station has no subnet to get an address
+// from, so bouncing it accomplishes nothing.
+//
+// Called with the arena lock held, so the work goes to a goroutine -- it is Telnet with a
+// pause in the middle, and nothing may block the match loop on network I/O. The switch
+// serialises against its own configuration internally, so this cannot interleave with the
+// reconfiguration that the match load below will trigger.
+func (arena *Arena) cycleStationPortsForRenewal() {
+	if !arena.EventSettings.NetworkSecurityEnabled {
+		return
+	}
+
+	var occupied [6]bool
+	any := false
+	for i, station := range stationOrder {
+		if arena.AllianceStations[station].Team != nil {
+			occupied[i] = true
+			any = true
+		}
+	}
+	if !any {
+		return
+	}
+
+	network := arena.teamNetwork
+	go func() {
+		if err := network.CycleStationPorts(occupied); err != nil {
+			log.Printf("Could not cycle driver station ports for address renewal: %v", err)
+		}
+	}()
+}
+
 func (arena *Arena) configureTeamEthernet(teams [6]*model.Team) {
 	if !arena.EventSettings.NetworkSecurityEnabled {
 		return

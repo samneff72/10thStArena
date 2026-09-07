@@ -55,6 +55,10 @@ Gi0/1–6 are not a site choice. [`dsPortInterfaces`](../../network/switch.go) h
 in station order, and the baseline builds each one as that station's access port. Wire a
 station elsewhere and its laptop lands on the wrong team's VLAN.
 
+Clearing a match bounces the link on every station that has a team registered, which is what
+makes its driver station laptop ask for an address again — it drops the one it had when the
+match ended. Nothing else cycles these ports.
+
 B2 and B3 have ports and VLANs but no driver stations yet; a station with no team gets no
 subnet, so VLANs 50 and 60 stay dark until one is registered.
 
