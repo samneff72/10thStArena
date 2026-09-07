@@ -555,8 +555,10 @@ SSID is the team number and the key is that team's WPA key from its record under
 **Teams** — so each robot's VH-109 radio, provisioned for its team as it would be for a
 competition, joins the correct VLAN with no field-side changes.
 
-A team with no WPA key set is provisioned with an empty one. Set it on the team record
-before the robot will associate.
+A team with no WPA key set is provisioned with an empty one, and its robot will not
+associate. Match Play shows the key next to the team number and fills it in from the team's
+record, so this is visible where you register rather than only under **Teams**. A team
+created from that page gets its number zero-padded to eight digits as a starting key.
 
 ### Step 4 — Verify Pi reachability
 
@@ -700,11 +702,17 @@ ssh <USER>@10.0.100.5 "sudo rm -f /opt/bioarena/logs/*.csv"
 Match Play does not record scores or results — it is a pure practice tool. Each match is a standalone timed run.
 
 1. Open `http://10.0.100.5:8080` in a browser on any device on the field network.
-2. Go to **Teams** and enter the team numbers for each station.
-3. Go to **Match**.
-4. Type team numbers into the station fields and click **Register** to assign them, then
-   click **Bypass Empty** to bypass the stations with no team, or check **BYP** individually.
-5. Wait for assigned stations to show a DS connection (or bypass them), then click **Start Match**.
+2. Go to **Match**.
+3. Type a team number into each station in use. Tabbing out of the field looks the team up:
+   a known team fills in its WPA key, and an unknown one offers to add it to the database
+   there and then, so there is no separate trip to **Teams** first.
+4. Adjust the WPA key if the robot's radio uses something other than the stored one, then
+   click **Register**. That assigns the teams, saves any keys you changed, and pushes the
+   SSIDs. Then click **Bypass Empty** to bypass the stations with no team, or check **BYP**
+   individually.
+5. Wait for assigned stations to show a DS connection (or bypass them), then click **Start
+   Match**. A station showing **CABLE** has something plugged in with no team registered;
+   **No cable** is a registered team with nothing plugged in.
 6. The field returns to pre-match on its own a few seconds after the match ends, keeping
    the team assignments and bypasses, so another round can start immediately. **Clear
    Match** does the same thing straight away.
@@ -772,6 +780,8 @@ Three controls, and the difference between the last two matters:
 Reach for **DISABLE FIELD** between runs. **Reset Field** is for ending the session or
 starting over — after it, every station has to be registered again, and laptops re-request
 an address, which takes up to one DHCP lease unless the port is unplugged and replugged.
+Bioarena no longer cycles the switch port to force that renewal; replugging the cable is the
+fast way.
 
 Per-station E-stops remain functional throughout and are independent of both.
 

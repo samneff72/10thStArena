@@ -118,9 +118,8 @@ access point section below.
 | Gi0/10–12 | spare, for troubleshooting | access vlan 1 |
 
 Gi0/1–6 are not a site choice. [`dsPortInterfaces`](../../network/switch.go) hardcodes them
-in station order and shuts and reopens each one around a VLAN change, which is what makes a
-laptop re-request an address on its new subnet. Wire a station elsewhere and it keeps the
-previous match's address.
+in station order, and the baseline builds each one as that station's access port. Wire a
+station elsewhere and its laptop lands on the wrong team's VLAN.
 
 Gi0/7 and Gi0/8 are interchangeable — both are configured identically as trunks carrying
 VLANs 1 and 10–60, and nothing in the code distinguishes them.
@@ -157,9 +156,17 @@ means this build wants one after all.
 
 ## Notes
 
-Driver station laptops take their addresses from the switch. Plugging one into any station
-port registers its team there: it gets a staging address, its driver station announces the
-team number, and bioarena rebuilds that station onto the team's own subnet.
+Driver station laptops take their addresses from the switch, once their station has a team
+registered. Registration is by hand: type the team numbers into Match Play and press
+Register. Plugging a laptop into a station with no team registered does nothing — the
+station has no subnet, so the laptop gets no address and never connects.
+
+The card shows **CABLE** when a station has something plugged in and no team registered, and
+**No cable** when a team is registered and nothing is plugged in. Both come from the
+switch's own port link state, which is the only thing that sees a station with no subnet.
+
+Entering a team number looks the team up: a known team fills in its WPA key, and an unknown
+one offers to add it to the database on the spot.
 
 A laptop used for both driving and development ends up on the field and on WiFi at once,
 and the field's DHCP hands out a default route to a network with no way off it. Raise the
