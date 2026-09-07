@@ -15,7 +15,6 @@ global.matchStates = {
   4: "PAUSE_PERIOD",
   5: "TELEOP_PERIOD",
   6: "POST_MATCH",
-  7: "FREE_PRACTICE",
 };
 global.matchTypeTest = 0;
 global.matchTiming = {
@@ -502,11 +501,14 @@ describe("handleArenaStatus — shared kiosk view", () => {
     window.location = originalLocation;
   });
 
-  test("follows when another kiosk selects free practice", () => {
+  // Match Play is the only operating page now, so nothing should ever send a kiosk
+  // elsewhere. The follow is kept because the server still reports a view, and a kiosk that
+  // is told to go somewhere it does not recognise should not sit there guessing.
+  test("follows when the shared view names another page", () => {
     const status = makeStatus(0, false);
-    status.CurrentView = "free_practice";
+    status.CurrentView = "some_other_page";
     handleArenaStatus(status);
-    expect(window.location.href).toBe("/free_practice");
+    expect(window.location.href).toBe("/some_other_page");
   });
 
   test("stays put when the shared view is already this page", () => {

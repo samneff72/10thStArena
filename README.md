@@ -338,10 +338,10 @@ state nobody put there.
 [switch_config.txt](switch_config.txt) records what the result looks like, for reference or
 for a switch you would rather set up by hand.
 
-Cycling a station's port is what makes its laptop re-request an address on the new subnet
-rather than keep the previous match's. Only the stations whose team changed are cycled, so
-the others keep their VLAN, their addresses, and their driver station connections — which
-is what makes free practice usable while other teams are driving.
+Only the stations whose team changed are rebuilt, so the others keep their VLAN, their
+addresses and their driver station connections. A laptop whose station did change re-requests
+an address when its driver station reconnects; bioarena does not cycle the switch port to
+force it, because that cost seconds on every match load.
 
 The first configuration after a restart rebuilds everything, because the switch outlives
 the process and may have been changed by hand in between.
@@ -762,29 +762,6 @@ next match's teams, cycling their station ports. With the same teams loaded the 
 that a no-op; with a changed lineup it lands in the recovery window, and those stations take
 longer to come back.
 
-### Running free practice
-
-Free practice has no timers: registered robots are drivable continuously until the
-operator stops them. Register each station first — the team's SSID and its VLAN subnet are
-created on registration, so a driver station plugged in beforehand has nothing to get an
-address from.
-
-Three controls, and the difference between the last two matters:
-
-| Control | Effect |
-|---------|--------|
-| **ENABLE FIELD** | Starts free practice, or resumes robots after a halt |
-| **DISABLE FIELD** | Halts all robot operation. Teams stay registered, SSIDs stay up, team subnets stay configured, driver stations stay connected. **ENABLE FIELD** resumes immediately |
-| **Reset Field** | Clears every slot, drops all SSIDs and team subnets, disconnects every driver station, and returns to setup |
-
-Reach for **DISABLE FIELD** between runs. **Reset Field** is for ending the session or
-starting over — after it, every station has to be registered again, and laptops re-request
-an address, which takes up to one DHCP lease unless the port is unplugged and replugged.
-Bioarena no longer cycles the switch port to force that renewal; replugging the cable is the
-fast way.
-
-Per-station E-stops remain functional throughout and are independent of both.
-
 ### Ports used by the service
 
 | Port | Protocol | Purpose                          |
@@ -965,7 +942,7 @@ Go 1.23+ — see `go.mod`.
 | Path | Contents |
 |------|----------|
 | `main.go` | Entry point: loads `config.yaml`, builds the arena, starts the web server |
-| `field/` | Arena state machine, driver station connections, match flow, free practice |
+| `field/` | Arena state machine, driver station connections, match flow |
 | `game/` | Scoring and match timing rules |
 | `network/` | Access point, switch, and local team network drivers |
 | `hardware/`, `plc/`, `led/` | Field hardware: e-stop panels, lights, sACN output |

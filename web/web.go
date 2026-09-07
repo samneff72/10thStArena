@@ -139,14 +139,12 @@ func addNoCacheHeader(handler http.Handler) http.Handler {
 func (web *Web) newHandler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "/free_practice", http.StatusFound)
+		http.Redirect(w, r, "/match_play", http.StatusFound)
 	})
 	mux.HandleFunc("GET /login", web.loginHandler)
 	mux.HandleFunc("POST /login", web.loginPostHandler)
 	mux.HandleFunc("GET /match_play", web.matchPlayHandler)
 	mux.HandleFunc("GET /match_play/websocket", web.matchPlayWebsocketHandler)
-	mux.HandleFunc("GET /free_practice", web.freePracticeHandler)
-	mux.HandleFunc("GET /free_practice/websocket", web.freePracticeWebsocketHandler)
 	mux.HandleFunc("POST /setup/db/clear/{type}", web.clearDbHandler)
 	mux.HandleFunc("POST /setup/db/restore", web.restoreDbHandler)
 	mux.HandleFunc("GET /setup/db/save", web.saveDbHandler)

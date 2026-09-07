@@ -52,7 +52,6 @@ const (
 	PausePeriod
 	TeleopPeriod
 	PostMatch
-	FreePractice // Sibling branch to match-play path; no timers.
 )
 
 type Arena struct {
@@ -89,7 +88,7 @@ type Arena struct {
 	soundsPlayed         map[*game.MatchSound]struct{}
 
 	// mu serialises the match loop against the web handlers. Update runs on the arena
-	// goroutine every 10ms while StartMatch, ClearMatch, SubstituteTeams, DisableField
+	// goroutine every 10ms while StartMatch, ClearMatch, SubstituteTeams
 	// and the rest are called from HTTP and WebSocket goroutines, so without it two
 	// operators -- or one operator and the loop -- can interleave mid-mutation.
 	// sendDsPacket reading Team.Id while assignTeam sets Team to nil panics the process
@@ -100,16 +99,13 @@ type Arena struct {
 	// network I/O -- see setupNetwork.
 	mu sync.Mutex
 
-	freePracticeReconfiguring atomic.Bool   // true while AP is being reconfigured for a slot change
-	freePracticeReconfigMu    sync.Mutex    // serialises concurrent SetFreePracticeSlot calls
-	ethernetConfigMutex       sync.Mutex    // guards ethernetConfigGeneration
-	ethernetConfigGeneration  uint64        // increments per request; stale requests are dropped
-	ethernetApplyMutex        sync.Mutex    // serialises wired reconfigurations
-	fieldEStopActive          atomic.Bool   // latched when GPIO field e-stop fires; cleared by ClearFieldEStop()
-	fieldEStopFault           atomic.Uint32 // hardware.FaultKind of the field e-stop; FaultNone when healthy
-	fieldEStopMonitored       atomic.Bool   // true when real GPIO hardware is behind FieldEStop, not the noop
-	fieldDisabled             atomic.Bool   // operator halt: robots disabled, field networking untouched
-	stationLinksKnown         atomic.Bool   // true once the switch has reported driver station port links
+	ethernetConfigMutex      sync.Mutex    // guards ethernetConfigGeneration
+	ethernetConfigGeneration uint64        // increments per request; stale requests are dropped
+	ethernetApplyMutex       sync.Mutex    // serialises wired reconfigurations
+	fieldEStopActive         atomic.Bool   // latched when GPIO field e-stop fires; cleared by ClearFieldEStop()
+	fieldEStopFault          atomic.Uint32 // hardware.FaultKind of the field e-stop; FaultNone when healthy
+	fieldEStopMonitored      atomic.Bool   // true when real GPIO hardware is behind FieldEStop, not the noop
+	stationLinksKnown        atomic.Bool   // true once the switch has reported driver station port links
 }
 
 type AllianceStation struct {
@@ -588,7 +584,7 @@ func (arena *Arena) ClearFieldEStop() {
 // Returns the fractional number of seconds since the start of the match.
 func (arena *Arena) MatchTimeSec() float64 {
 	switch arena.MatchState {
-	case PreMatch, StartMatch, PostMatch, FreePractice:
+	case PreMatch, StartMatch, PostMatch:
 		return 0
 	default:
 		return time.Since(arena.MatchStartTime).Seconds()
@@ -700,10 +696,6 @@ func (arena *Arena) Update() {
 				log.Printf("Failed to clear match automatically: %v", err)
 			}
 		}
-	case FreePractice:
-		// No timer logic; stations are granted field-enable continuously.
-		auto = false
-		enabled = arena.freePracticeEnabled()
 	}
 
 	// Send a match tick notification if passing an integer second threshold or if the match state changed.
@@ -1235,7 +1227,7 @@ func (arena *Arena) abortMatchForStop() {
 }
 
 func (arena *Arena) handleSounds(matchTimeSec float64) {
-	if arena.MatchState == PreMatch || arena.MatchState == FreePractice {
+	if arena.MatchState == PreMatch {
 		// Only apply this logic during a match.
 		return
 	}
@@ -1279,7 +1271,7 @@ func (arena *Arena) pollStationPortLinks() {
 	arena.mu.Lock()
 	matchState := arena.MatchState
 	arena.mu.Unlock()
-	if matchState != PreMatch && matchState != FreePractice {
+	if matchState != PreMatch {
 		return
 	}
 
@@ -1302,220 +1294,6 @@ func (arena *Arena) pollStationPortLinks() {
 	}
 	arena.stationLinksKnown.Store(true)
 	arena.ArenaStatusNotifier.Notify()
-}
-
-// EnterFreePractice transitions the arena from PreMatch into FreePractice mode.
-// Returns an error if called from any other state.
-func (arena *Arena) EnterFreePractice() error {
-	arena.mu.Lock()
-	defer arena.mu.Unlock()
-
-	if arena.MatchState != PreMatch {
-		return fmt.Errorf("cannot enter free practice while a match is in progress or results are pending")
-	}
-	arena.fieldDisabled.Store(false)
-	arena.MatchState = FreePractice
-	arena.ArenaStatusNotifier.Notify()
-	return nil
-}
-
-// DisableField halts robot operation while leaving the field otherwise as it is: teams
-// stay registered, SSIDs stay up, team subnets stay configured, and driver stations stay
-// connected. It is the control an operator reaches for to stop the field between runs,
-// and EnableField resumes without anyone re-registering or re-connecting.
-//
-// Use ExitFreePractice instead to take the whole field down.
-func (arena *Arena) DisableField() {
-	arena.fieldDisabled.Store(true)
-	arena.ArenaStatusNotifier.Notify()
-}
-
-// EnableField resumes robot operation after DisableField.
-func (arena *Arena) EnableField() {
-	arena.fieldDisabled.Store(false)
-	arena.ArenaStatusNotifier.Notify()
-}
-
-// IsFieldDisabled reports whether the operator has halted robot operation.
-func (arena *Arena) IsFieldDisabled() bool {
-	return arena.fieldDisabled.Load()
-}
-
-// freePracticeEnabled reports whether stations should be granted field-enable in free
-// practice: not mid-reconfiguration, and not halted by the operator.
-func (arena *Arena) freePracticeEnabled() bool {
-	return !arena.freePracticeReconfiguring.Load() && !arena.fieldDisabled.Load()
-}
-
-// ExitFreePractice resets the field: every slot cleared, the AP emptied, the team subnets
-// torn down, and the arena returned to PreMatch. Robots are disabled before any slot is
-// cleared, ensuring they are never briefly enabled-but-disconnected during the transition.
-//
-// This is the heavy option. DisableField halts robots without disturbing any of it.
-func (arena *Arena) ExitFreePractice() error {
-	arena.mu.Lock()
-	defer arena.mu.Unlock()
-
-	if arena.MatchState != FreePractice {
-		return fmt.Errorf("not in free practice mode (state=%d)", arena.MatchState)
-	}
-
-	arena.freePracticeReconfigMu.Lock()
-	defer arena.freePracticeReconfigMu.Unlock()
-
-	// Disable all robots immediately; the next arena tick will send disabled packets.
-	arena.freePracticeReconfiguring.Store(true)
-
-	// Clear every slot.
-	for _, station := range []string{"R1", "R2", "R3", "B1", "B2", "B3"} {
-		as := arena.AllianceStations[station]
-		if as.DsConn != nil {
-			as.DsConn.close()
-			as.DsConn = nil
-		}
-		as.Team = nil
-		as.EStop.Store(false)
-		as.AStop.Store(false)
-	}
-
-	// Reset the AP to an empty configuration.
-	var emptyTeams [6]*model.Team
-	if err := arena.accessPoint.ConfigureTeamWifi(emptyTeams); err != nil {
-		log.Printf("ExitFreePractice: failed to reset AP: %v", err)
-		// Continue regardless — we are exiting free practice.
-	}
-
-	// Tear the team subnets down too, so no station is left routable to a team that has
-	// gone home.
-	arena.configureTeamEthernet(emptyTeams)
-
-	arena.freePracticeReconfiguring.Store(false)
-	arena.fieldDisabled.Store(false)
-	arena.MatchState = PreMatch
-	arena.ArenaStatusNotifier.Notify()
-	return nil
-}
-
-// SetFreePracticeSlot registers a team in the given station.
-// teamId must be ≥ 1 and must not already be assigned to another slot.
-// Triggers a brief AP reconfiguration during which all robots are disabled.
-// If AP reconfiguration fails the slot assignment is rolled back.
-func (arena *Arena) SetFreePracticeSlot(station string, teamId int, wpaKey string) error {
-	arena.mu.Lock()
-	defer arena.mu.Unlock()
-
-	if arena.MatchState != FreePractice && arena.MatchState != PreMatch {
-		return fmt.Errorf("not in free practice mode (state=%d)", arena.MatchState)
-	}
-	if _, ok := arena.AllianceStations[station]; !ok {
-		return fmt.Errorf("invalid alliance station %q", station)
-	}
-	if teamId <= 0 {
-		return fmt.Errorf("team number must be 1 or greater")
-	}
-
-	// Reject duplicate team numbers across slots.
-	for id, as := range arena.AllianceStations {
-		if id != station && as.Team != nil && as.Team.Id == teamId {
-			return fmt.Errorf("team %d is already registered in station %s", teamId, id)
-		}
-	}
-
-	arena.freePracticeReconfigMu.Lock()
-	defer arena.freePracticeReconfigMu.Unlock()
-
-	arena.freePracticeReconfiguring.Store(true)
-
-	as := arena.AllianceStations[station]
-	oldTeam := as.Team
-
-	// Close any existing DS connection for the slot.
-	if as.DsConn != nil {
-		as.DsConn.close()
-		as.DsConn = nil
-	}
-	as.Team = &model.Team{Id: teamId, WpaKey: wpaKey}
-
-	// Build the current 6-team list for AP configuration.
-	teams := arena.freePracticeTeams()
-	if err := arena.accessPoint.ConfigureTeamWifi(teams); err != nil {
-		// Rollback in-memory state.
-		as.Team = oldTeam
-		arena.freePracticeReconfiguring.Store(false)
-		return fmt.Errorf("AP reconfiguration failed (rolled back): %w", err)
-	}
-
-	arena.freePracticeReconfiguring.Store(false)
-
-	// The wired side too: without it a free practice slot gets an SSID but no VLAN
-	// subinterface and no DHCP scope, so a driver station plugged into that station's
-	// port never receives an address.
-	arena.configureTeamEthernet(teams)
-
-	// Best-effort: persist the WPA key back to the team record in the database.
-	if dbTeam, dbErr := arena.Database.GetTeamById(teamId); dbErr == nil && dbTeam != nil && dbTeam.WpaKey != wpaKey {
-		dbTeam.WpaKey = wpaKey
-		if dbErr = arena.Database.UpdateTeam(dbTeam); dbErr != nil {
-			log.Printf("Failed to persist WPA key for team %d: %v", teamId, dbErr)
-		}
-	}
-
-	arena.ArenaStatusNotifier.Notify()
-	return nil
-}
-
-// ClearFreePracticeSlot removes the team from the given station.
-// If the slot is already empty no AP reconfiguration is triggered.
-// Triggers a brief AP reconfiguration pause otherwise.
-func (arena *Arena) ClearFreePracticeSlot(station string) error {
-	arena.mu.Lock()
-	defer arena.mu.Unlock()
-
-	if arena.MatchState != FreePractice && arena.MatchState != PreMatch {
-		return fmt.Errorf("not in free practice mode (state=%d)", arena.MatchState)
-	}
-	if _, ok := arena.AllianceStations[station]; !ok {
-		return fmt.Errorf("invalid alliance station %q", station)
-	}
-
-	as := arena.AllianceStations[station]
-	if as.Team == nil {
-		return nil // already empty — no reconfiguration needed
-	}
-
-	arena.freePracticeReconfigMu.Lock()
-	defer arena.freePracticeReconfigMu.Unlock()
-
-	arena.freePracticeReconfiguring.Store(true)
-
-	oldTeam := as.Team
-	if as.DsConn != nil {
-		as.DsConn.close()
-		as.DsConn = nil
-	}
-	as.Team = nil
-
-	teams := arena.freePracticeTeams()
-	if err := arena.accessPoint.ConfigureTeamWifi(teams); err != nil {
-		// Rollback in-memory state.
-		as.Team = oldTeam
-		arena.freePracticeReconfiguring.Store(false)
-		return fmt.Errorf("AP reconfiguration failed (rolled back): %w", err)
-	}
-
-	arena.freePracticeReconfiguring.Store(false)
-	arena.configureTeamEthernet(teams)
-	arena.ArenaStatusNotifier.Notify()
-	return nil
-}
-
-// freePracticeTeams builds the [6]*model.Team array (R1…B3) from current AllianceStations.
-func (arena *Arena) freePracticeTeams() [6]*model.Team {
-	var teams [6]*model.Team
-	for i, s := range []string{"R1", "R2", "R3", "B1", "B2", "B3"} {
-		teams[i] = arena.AllianceStations[s].Team
-	}
-	return teams
 }
 
 // AutoWinnerMode selects how the AUTO result is decided for a practice match. On a
@@ -1563,10 +1341,7 @@ func ParseAutoWinnerMode(name string) (AutoWinnerMode, error) {
 // Field views that every kiosk mirrors. Only the two operating pages take part: the
 // settings and team pages are administrative, and dragging every display to them because
 // one operator opened one would be worse than the drift it fixed.
-const (
-	ViewMatchPlay    = "match_play"
-	ViewFreePractice = "free_practice"
-)
+const ViewMatchPlay = "match_play"
 
 // SetCurrentView records which operating page the operators are on, so that kiosks
 // opened on the other one follow. Whichever page was opened most recently wins.
@@ -1575,7 +1350,7 @@ const (
 // ignores it still works. It exists because a field can have several displays and they
 // are useless if they disagree about what is being run.
 func (arena *Arena) SetCurrentView(view string) {
-	if view != ViewMatchPlay && view != ViewFreePractice {
+	if view != ViewMatchPlay {
 		return
 	}
 
@@ -1596,13 +1371,8 @@ func (arena *Arena) CurrentView() string {
 	return arena.currentViewLocked()
 }
 
-// currentViewLocked assumes the arena lock is held. Free practice forces its own view:
-// match play disables every control in that state, so a kiosk left there is useless
-// regardless of where anyone navigated last.
+// currentViewLocked assumes the arena lock is held.
 func (arena *Arena) currentViewLocked() string {
-	if arena.MatchState == FreePractice {
-		return ViewFreePractice
-	}
 	if arena.currentView == "" {
 		return ViewMatchPlay
 	}
@@ -1628,7 +1398,7 @@ func (arena *Arena) SetAutoWinnerMode(mode AutoWinnerMode) error {
 	defer arena.mu.Unlock()
 
 	switch arena.MatchState {
-	case PreMatch, PostMatch, FreePractice:
+	case PreMatch, PostMatch:
 		arena.AutoWinnerMode = mode
 		return nil
 	default:
@@ -1779,4 +1549,3 @@ func (arena *Arena) setMatchTeam(station string, teamId int) {
 		arena.CurrentMatch.Blue3 = teamId
 	}
 }
-

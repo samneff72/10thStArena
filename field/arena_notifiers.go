@@ -81,24 +81,22 @@ func (arena *Arena) generateArenaStatusMessage() any {
 		}
 	}
 	return &struct {
-		MatchId                   int
-		AllianceStations          map[string]allianceStationView
+		MatchId          int
+		AllianceStations map[string]allianceStationView
 		MatchState
-		CanStartMatch             bool
-		AccessPointStatus         string
-		SwitchStatus              string
-		PlcIsHealthy              bool
-		FieldEStop                bool
-		PlcArmorBlockStatuses     map[string]bool
-		GpioFieldEStopActive      bool
-		GpioFieldEStopFault       string
+		CanStartMatch         bool
+		AccessPointStatus     string
+		SwitchStatus          string
+		PlcIsHealthy          bool
+		FieldEStop            bool
+		PlcArmorBlockStatuses map[string]bool
+		GpioFieldEStopActive  bool
+		GpioFieldEStopFault   string
 		// FieldEStopMonitored distinguishes a healthy button from no button at all. The
 		// noop panel reports StopOK forever, so without this the badge reads the same
 		// whether the field e-stop is working or was never configured.
 		FieldEStopMonitored bool
-		FreePracticeReconfiguring bool
-		FieldDisabled             bool
-		StationLinksKnown         bool
+		StationLinksKnown   bool
 		// CurrentView is the operating page every kiosk should be showing, so that a
 		// field with several displays does not have them disagreeing about what is
 		// being run.
@@ -116,8 +114,6 @@ func (arena *Arena) generateArenaStatusMessage() any {
 		arena.fieldEStopActive.Load(),
 		faultDescription(arena.fieldEStopFault.Load()),
 		arena.fieldEStopMonitored.Load(),
-		arena.freePracticeReconfiguring.Load(),
-		arena.fieldDisabled.Load(),
 		arena.stationLinksKnown.Load(),
 		// Locked variant: this generator runs from Update with the arena lock held.
 		arena.currentViewLocked(),

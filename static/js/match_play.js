@@ -346,7 +346,7 @@ const handleArenaStatus = function (data) {
       btnClear.disabled = false;
       break;
     default:
-      // FREE_PRACTICE or unknown.
+      // An unrecognised state: nothing is safe to offer.
       btnStart.disabled = true;
       btnAbort.disabled = true;
       btnClear.disabled = true;
@@ -384,7 +384,7 @@ const handleMatchTime = function (data) {
     document.getElementById("periodText").textContent = stateText || "—";
     const secs = Math.max(0, countdown);
     document.getElementById("timerText").textContent =
-      (state === "POST_MATCH" || state === "FREE_PRACTICE") ? "—" : getCountdownString(secs);
+      state === "POST_MATCH" ? "—" : getCountdownString(secs);
 
     // Period colour coding on the timer band.
     const band = document.getElementById("timerBand");

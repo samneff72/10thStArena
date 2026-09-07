@@ -16,8 +16,7 @@ const matchStates = {
   3: "AUTO_PERIOD",
   4: "PAUSE_PERIOD",
   5: "TELEOP_PERIOD",
-  6: "POST_MATCH",
-  7: "FREE_PRACTICE"
+  6: "POST_MATCH"
 };
 let matchTiming;
 
@@ -49,9 +48,6 @@ const translateMatchTime = function (data, callback) {
       break;
     case "POST_MATCH":
       matchStateText = "POST-MATCH";
-      break;
-    case "FREE_PRACTICE":
-      matchStateText = "FREE PRACTICE ENABLED";
       break;
   }
   callback(matchStates[data.MatchState], matchStateText, getCountdown(data.MatchState, data.MatchTimeSec));

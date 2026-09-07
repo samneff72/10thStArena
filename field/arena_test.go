@@ -5,10 +5,10 @@
 package field
 
 import (
+	"github.com/stretchr/testify/assert"
 	"github.com/team841/bioarena/game"
 	"github.com/team841/bioarena/hardware"
 	"github.com/team841/bioarena/model"
-	"github.com/stretchr/testify/assert"
 	"sync"
 	"testing"
 	"time"
@@ -119,7 +119,7 @@ func TestSetAutoWinnerModeRejectedDuringMatch(t *testing.T) {
 	arena := setupTestArena(t)
 
 	// Settable while the field is idle.
-	for _, state := range []MatchState{PreMatch, PostMatch, FreePractice} {
+	for _, state := range []MatchState{PreMatch, PostMatch} {
 		arena.MatchState = state
 		assert.Nil(t, arena.SetAutoWinnerMode(AutoWinnerForceBlue))
 		assert.Equal(t, AutoWinnerForceBlue, arena.AutoWinnerMode)
@@ -1335,12 +1335,10 @@ func TestConcurrentOperatorsDoNotDeadlockOrPanic(t *testing.T) {
 					_ = arena.SubstituteTeams(841, 0, 0, 9841, 0, 0)
 					arena.BypassEmptyStations()
 					_ = arena.StartMatch()
-					arena.DisableField()
 				} else {
 					_ = arena.SetAutoWinnerMode(AutoWinnerForceRed)
 					_ = arena.AbortMatch()
 					_ = arena.ClearMatch()
-					arena.EnableField()
 				}
 			}
 		}(i)
@@ -1378,16 +1376,13 @@ func TestConcurrentOperatorsDoNotDeadlockOrPanic(t *testing.T) {
 	)
 }
 
-// Several displays on one field are useless if they disagree about what is being run, so
-// the arena records which operating page was opened most recently and the kiosks follow.
+// Match Play is the only operating page, so the view is only ever that. Kept because the
+// mechanism still refuses anything else, which is what stops a kiosk being stranded.
 func TestCurrentView(t *testing.T) {
 	arena := setupTestArena(t)
 
 	// Match play until told otherwise, so a field that has never navigated still agrees.
 	assert.Equal(t, ViewMatchPlay, arena.CurrentView())
-
-	arena.SetCurrentView(ViewFreePractice)
-	assert.Equal(t, ViewFreePractice, arena.CurrentView())
 
 	arena.SetCurrentView(ViewMatchPlay)
 	assert.Equal(t, ViewMatchPlay, arena.CurrentView())
@@ -1397,23 +1392,5 @@ func TestCurrentView(t *testing.T) {
 	arena.SetCurrentView("setup/settings")
 	assert.Equal(t, ViewMatchPlay, arena.CurrentView())
 	arena.SetCurrentView("")
-	assert.Equal(t, ViewMatchPlay, arena.CurrentView())
-}
-
-// Free practice overrides the recorded view: match play disables every control in that
-// state, so a kiosk left there is useless no matter where anyone navigated last.
-func TestCurrentViewForcedByFreePractice(t *testing.T) {
-	arena := setupTestArena(t)
-	arena.SetCurrentView(ViewMatchPlay)
-
-	assert.Nil(t, arena.EnterFreePractice())
-	assert.Equal(t, ViewFreePractice, arena.CurrentView())
-
-	// Selecting match play while free practice runs does not move anyone.
-	arena.SetCurrentView(ViewMatchPlay)
-	assert.Equal(t, ViewFreePractice, arena.CurrentView())
-
-	// Once free practice ends the recorded selection applies again.
-	assert.Nil(t, arena.ExitFreePractice())
 	assert.Equal(t, ViewMatchPlay, arena.CurrentView())
 }

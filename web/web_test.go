@@ -5,10 +5,10 @@
 package web
 
 import (
+	"github.com/stretchr/testify/assert"
 	"github.com/team841/bioarena/field"
 	"github.com/team841/bioarena/game"
 	"github.com/team841/bioarena/websocket"
-	"github.com/stretchr/testify/assert"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -80,7 +80,7 @@ func TestRootRedirect(t *testing.T) {
 	web := setupTestWeb(t)
 	recorder := web.getHttpResponse("/")
 	assert.Equal(t, http.StatusFound, recorder.Code)
-	assert.Equal(t, "/free_practice", recorder.Header().Get("Location"))
+	assert.Equal(t, "/match_play", recorder.Header().Get("Location"))
 }
 
 func setupTestWeb(t *testing.T) *Web {

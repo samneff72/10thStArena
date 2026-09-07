@@ -289,7 +289,7 @@ func (dsConn *DriverStationConnection) encodeControlPacket(arena *Arena) ([maxCo
 	// Remaining number of seconds in match.
 	var matchSecondsRemaining int
 	switch arena.MatchState {
-	case PreMatch, FreePractice:
+	case PreMatch:
 		matchSecondsRemaining = game.MatchTiming.AutoDurationSec
 	case StartMatch, AutoPeriod:
 		matchSecondsRemaining = game.MatchTiming.AutoDurationSec - int(arena.MatchTimeSec())

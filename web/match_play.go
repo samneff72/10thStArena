@@ -26,11 +26,6 @@ func (web *Web) matchPlayHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if web.arena.MatchState == field.FreePractice {
-		http.Redirect(w, r, "/free_practice?warn=1", http.StatusSeeOther)
-		return
-	}
-
 	// Opening a page is what selects it for every kiosk. A display that follows lands
 	// back here and sets the same value, which is why the setter ignores no-ops.
 	web.arena.SetCurrentView(field.ViewMatchPlay)
