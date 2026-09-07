@@ -84,6 +84,19 @@ const clearMatch = function () {
   websocket.send("clearMatch");
 };
 
+// Everything torn down, not just the match. Confirmed first: Clear Match is next to it and
+// keeps the lineup, so a mis-click here costs re-registering every team.
+const resetField = function () {
+  if (!window.confirm(
+    "Reset the field?\n\n" +
+    "Every team is unregistered, every driver station is disconnected, and the SSIDs and " +
+    "team subnets are torn down. Use Clear Match to run another round with the same teams."
+  )) {
+    return;
+  }
+  websocket.send("resetField");
+};
+
 // Bypasses every station with no team registered, so a 1v0 practice match can start
 // without ticking five checkboxes. Occupied stations are left alone.
 const bypassEmptyStations = function () {
@@ -325,11 +338,16 @@ const handleArenaStatus = function (data) {
   const btnAbort = document.getElementById("btnAbort");
   const btnClear = document.getElementById("btnClear");
 
+  // Reset Field is available whenever a match is not running, which is the same window the
+  // server accepts it in. Offering it mid-match would only produce a rejection.
+  const btnResetField = document.getElementById("btnResetField");
+
   switch (matchStates[data.MatchState]) {
     case "PRE_MATCH":
       btnStart.disabled = !data.CanStartMatch;
       btnAbort.disabled = true;
       btnClear.disabled = true;
+      btnResetField.disabled = false;
       break;
     case "START_MATCH":
     case "WARMUP_PERIOD":
@@ -339,17 +357,20 @@ const handleArenaStatus = function (data) {
       btnStart.disabled = true;
       btnAbort.disabled = false;
       btnClear.disabled = true;
+      btnResetField.disabled = true;
       break;
     case "POST_MATCH":
       btnStart.disabled = true;
       btnAbort.disabled = true;
       btnClear.disabled = false;
+      btnResetField.disabled = false;
       break;
     default:
       // An unrecognised state: nothing is safe to offer.
       btnStart.disabled = true;
       btnAbort.disabled = true;
       btnClear.disabled = true;
+      btnResetField.disabled = true;
   }
 };
 

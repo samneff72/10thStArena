@@ -277,3 +277,58 @@ func TestClearMatchSkipsPortCycleWhenSecurityDisabled(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 	assert.Empty(t, fake.cycled)
 }
+
+// --- field reset ---
+
+// Reset Field is the heavy option, and the one Clear Match deliberately is not: the lineup
+// goes, not just the match. Anything less and the operator has to unregister six stations
+// by hand at the end of a session.
+func TestResetFieldClearsEverything(t *testing.T) {
+	arena, fake := setupTeamNetworkTestArena(t)
+	assert.NoError(t, arena.Database.CreateTeam(&model.Team{Id: 841}))
+	// Through the real registration path, so CurrentMatch carries the lineup too -- that is
+	// what a clear reads back, and a station set directly would make this test vacuous.
+	assert.NoError(t, arena.SubstituteTeams(841, 0, 0, 0, 0, 0))
+	arena.AllianceStations["R2"].Bypass.Store(true)
+	arena.AllianceStations["R1"].EStop.Store(true)
+
+	arena.MatchState = PostMatch
+	assert.NoError(t, arena.ResetField())
+
+	assert.Equal(t, PreMatch, arena.MatchState)
+	for _, station := range stationOrder {
+		as := arena.AllianceStations[station]
+		assert.Nil(t, as.Team, "%s should be unregistered", station)
+		assert.False(t, as.Bypass.Load(), "%s bypass should be cleared", station)
+		assert.False(t, as.EStop.Load(), "%s e-stop should be cleared", station)
+	}
+	assert.Equal(t, 0, arena.CurrentMatch.Red1)
+
+	// The wired side is torn down, not left routable to a team that has gone home.
+	assert.Equal(t, [6]*model.Team{}, fake.lastApplied(t))
+}
+
+// Clear Match is the opposite choice and must stay that way: the same lineup runs round
+// after round on a practice field.
+func TestClearMatchKeepsTeamsWhereResetFieldDoesNot(t *testing.T) {
+	arena, _ := setupTeamNetworkTestArena(t)
+	assert.NoError(t, arena.Database.CreateTeam(&model.Team{Id: 841}))
+	assert.NoError(t, arena.SubstituteTeams(841, 0, 0, 0, 0, 0))
+
+	arena.MatchState = PostMatch
+	assert.NoError(t, arena.ClearMatch())
+	assert.NotNil(t, arena.AllianceStations["R1"].Team, "clearing a match keeps the lineup")
+
+	arena.MatchState = PostMatch
+	assert.NoError(t, arena.ResetField())
+	assert.Nil(t, arena.AllianceStations["R1"].Team, "resetting the field does not")
+}
+
+// A match in progress must not be torn down underneath the robots driving in it.
+func TestResetFieldRejectedDuringMatch(t *testing.T) {
+	arena, _ := setupTeamNetworkTestArena(t)
+	for _, state := range []MatchState{StartMatch, WarmupPeriod, AutoPeriod, PausePeriod, TeleopPeriod} {
+		arena.MatchState = state
+		assert.ErrorContains(t, arena.ResetField(), "while a match is in progress", "state %d", state)
+	}
+}

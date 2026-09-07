@@ -78,6 +78,7 @@ function buildDom() {
       </div>`
     ).join("")}
     <button id="btnRegister" disabled></button>
+    <button id="btnResetField"></button>
   `;
 }
 

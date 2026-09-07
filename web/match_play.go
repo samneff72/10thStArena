@@ -208,6 +208,14 @@ func (web *Web) matchPlayWebsocketHandler(w http.ResponseWriter, r *http.Request
 			if err = ws.WriteNotifier(web.arena.ArenaStatusNotifier); err != nil {
 				log.Println(err)
 			}
+		// The heavy reset: everything unregistered and the network torn down. Distinct from
+		// clearMatch, which deliberately keeps the lineup for another round.
+		case "resetField":
+			if err = web.arena.ResetField(); err != nil {
+				ws.WriteError(err.Error())
+				continue
+			}
+			log.Println("Field reset by the operator")
 		case "clearMatch":
 			err = web.arena.ClearMatch()
 			if err != nil {

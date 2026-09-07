@@ -504,6 +504,60 @@ func (arena *Arena) ClearMatch() error {
 	return arena.clearMatchLocked()
 }
 
+// ResetField takes the whole field down: every team unregistered, every driver station
+// disconnected, the access point emptied of SSIDs and the team subnets torn off the switch.
+//
+// This is the heavy option, and the one Clear Match deliberately is not. Clearing a match
+// keeps the lineup so the same teams can run another round immediately, which is what a
+// practice field wants nearly every time. This is for the end of a session, or for starting
+// over when the field is in a state nobody can account for.
+//
+// Robots are stopped before anything is torn down: stations are cleared first, so the next
+// tick sends disabled packets to driver stations that still exist, rather than leaving a
+// robot enabled while its subnet disappears underneath it.
+func (arena *Arena) ResetField() error {
+	arena.mu.Lock()
+	defer arena.mu.Unlock()
+
+	if arena.MatchState != PreMatch && arena.MatchState != PostMatch {
+		return fmt.Errorf("cannot reset the field while a match is in progress")
+	}
+
+	for _, station := range stationOrder {
+		as := arena.AllianceStations[station]
+		if as.DsConn != nil {
+			as.DsConn.close()
+			as.DsConn = nil
+		}
+		as.Team = nil
+		as.Bypass.Store(false)
+		as.EStop.Store(false)
+		as.AStop.Store(false)
+		as.EStopFault.Store(0)
+	}
+
+	if err := arena.ResetMatch(); err != nil {
+		return err
+	}
+
+	// Deliberately not clearMatchLocked: that reads the lineup back out of CurrentMatch and
+	// reloads it, which is exactly the preservation this is meant to undo. Loading an empty
+	// match instead also does the teardown, because LoadMatch hands its teams to
+	// setupNetwork -- so the access point is emptied of SSIDs and the team subnets come off
+	// the switch, rather than leaving a station routable to a team that has gone home.
+	if err := arena.LoadMatch(&model.Match{
+		Type:      model.Test,
+		ShortName: "T",
+		LongName:  "Test Match",
+	}); err != nil {
+		return err
+	}
+
+	arena.ArenaStatusNotifier.Notify()
+	log.Println("Field reset: all teams unregistered, SSIDs and team subnets torn down.")
+	return nil
+}
+
 // clearMatchLocked is ClearMatch with the arena lock already held.
 func (arena *Arena) clearMatchLocked() error {
 	if arena.MatchState != PostMatch {

@@ -722,7 +722,19 @@ Match Play does not record scores or results — it is a pure practice tool. Eac
    **No cable** is a registered team with nothing plugged in.
 6. The field returns to pre-match on its own a few seconds after the match ends, keeping
    the team assignments and bypasses, so another round can start immediately. **Clear
-   Match** does the same thing straight away.
+   Match** does the same thing straight away. Either way the driver station ports are
+   bounced, which is what makes the laptops ask for an address again after releasing the
+   one they had.
+
+**Reset Field** is the other option, and the opposite choice. Clear Match keeps the lineup
+because a practice field runs the same teams round after round; Reset Field unregisters
+every team, disconnects every driver station, and takes the SSIDs and team subnets down. It
+asks for confirmation first, since it is the only control on the page that loses work, and
+it is refused while a match is running.
+
+Reach for it at the end of a session, or when the field is in a state nobody can account
+for. Team records themselves are not touched — a team stays in the database with its WPA
+key, ready to be registered again.
 
 > **Do not run field control from a driver station laptop.** The driver station releases
 > its IP address at the end of every match — see
