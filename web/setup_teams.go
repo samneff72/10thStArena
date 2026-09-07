@@ -8,6 +8,7 @@ package web
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -69,7 +70,13 @@ func (web *Web) teamQuickAddHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = web.arena.Database.CreateTeam(&model.Team{Id: teamId}); err != nil {
+	// Given a WPA key up front, derived from the team number: zero-padded to eight digits,
+	// which is WPA2's minimum length. A team created without one has no working WiFi, and
+	// the operator has no way to know that until a robot fails to associate. Predictable
+	// rather than random so it can be read off the team number at the driver station.
+	if err = web.arena.Database.CreateTeam(
+		&model.Team{Id: teamId, WpaKey: fmt.Sprintf("%08d", teamId)},
+	); err != nil {
 		handleWebErr(w, err)
 		return
 	}

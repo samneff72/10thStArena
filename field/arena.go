@@ -1780,16 +1780,3 @@ func (arena *Arena) setMatchTeam(station string, teamId int) {
 	}
 }
 
-// ensureTeamExists returns the team's record, creating it if the field has not seen it
-// before. A team that turns up on a staging network is by definition unexpected.
-func (arena *Arena) ensureTeamExists(teamId int) (*model.Team, error) {
-	team, err := arena.Database.GetTeamById(teamId)
-	if err != nil || team != nil {
-		return team, err
-	}
-	team = &model.Team{Id: teamId, WpaKey: fmt.Sprintf("%08d", teamId)}
-	if err := arena.Database.CreateTeam(team); err != nil {
-		return nil, err
-	}
-	return team, nil
-}

@@ -101,8 +101,90 @@ const setTestMatchName = function () {
   websocket.send("setTestMatchName", document.getElementById("testMatchName").value);
 };
 
+// Looks the entered team up and fills in its WPA key, or offers to create it.
+//
+// Registering rejects a team the database has never seen -- validateTeams returns "Team N
+// is not present at the event" -- so without the offer the operator is told no and has to
+// leave for Setup > Teams and come back. Same endpoints Free Practice uses.
+const lookUpTeam = function (station) {
+  const teamId = getTeamNumber(station);
+  const wpa = document.getElementById("wpaKey-" + station);
+  if (!teamId || teamId < 1) {
+    // Clearing the number clears a key that came from the database, but never one the
+    // operator typed themselves.
+    if (wpa.dataset.autofilled === "true") {
+      wpa.value = "";
+      delete wpa.dataset.autofilled;
+    }
+    return;
+  }
+
+  fetch("/setup/teams/" + teamId)
+    .then(function (response) {
+      if (response.ok) {
+        return response.json().then(function (data) {
+          // A key the operator typed is left alone: they may be deliberately changing it,
+          // and overwriting what someone just entered is worse than leaving a stale one.
+          if (wpa.value === "" || wpa.dataset.autofilled === "true") {
+            wpa.value = data.wpaKey || "";
+            wpa.dataset.autofilled = "true";
+          }
+        });
+      }
+      if (response.status === 404) {
+        showTeamNotInDbModal(teamId, station);
+      }
+    })
+    .catch(function () {});
+};
+
+// Offers to create a team the database does not have, so registration can proceed without
+// leaving the page.
+const showTeamNotInDbModal = function (teamId, station) {
+  document.getElementById("teamNotInDbMessage").textContent =
+    "Team " + teamId + " is not in the database. Add it now, or clear the number.";
+
+  const modalEl = document.getElementById("teamNotInDbModal");
+  const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+
+  // Rebound each time, so the handlers close over the current team and station.
+  const cancel = document.getElementById("teamNotInDbCancel");
+  const add = document.getElementById("teamNotInDbAdd");
+  cancel.onclick = function () {
+    document.getElementById("team-" + station).value = "";
+    markRegistration();
+    modal.hide();
+  };
+  add.onclick = function () {
+    fetch("/setup/teams/quick-add", {
+      method: "POST",
+      headers: {"Content-Type": "application/x-www-form-urlencoded"},
+      body: "id=" + teamId,
+    })
+      .then(function (response) {
+        if (response.ok) {
+          modal.hide();
+          // Created with a default key, so pull it straight back in rather than leaving
+          // the operator to wonder what it was given.
+          lookUpTeam(station);
+        } else {
+          response.text().then(function (msg) { alert("Failed to add team: " + msg); });
+        }
+      })
+      .catch(function () { alert("Failed to add team."); });
+  };
+
+  modal.show();
+};
+
 const getWpaKey = function (station) {
   return document.getElementById("wpaKey-" + station).value.trim();
+};
+
+// Typing in the key box makes it the operator's, so a later team lookup will not overwrite
+// it. markRegistration is called separately by the field's own onchange.
+const markWpaKeyEdited = function (station) {
+  delete document.getElementById("wpaKey-" + station).dataset.autofilled;
 };
 
 const getTeamNumber = function (station) {
@@ -288,6 +370,8 @@ const handleMatchLoad = function (data) {
     const wpa = document.getElementById("wpaKey-" + station);
     if (document.activeElement !== wpa) {
       wpa.value = team ? team.WpaKey || "" : "";
+      // Came from the database, so a team lookup may replace it.
+      wpa.dataset.autofilled = "true";
     }
     wpa.disabled = !data.AllowSubstitution;
   }

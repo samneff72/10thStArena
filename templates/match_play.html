@@ -6,6 +6,26 @@ Simplified match play UI for 10th Street practice field controller.
 */}}
 {{define "title"}}Match Play{{end}}
 {{define "body"}}
+<!-- Offered when a team number is entered that the database has never seen. Registering
+     rejects an unknown team outright, so without this the operator is told no and left to
+     go to Setup > Teams and come back. Same modal and same endpoints as Free Practice. -->
+<div class="modal fade" id="teamNotInDbModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Team Not in Database</h5>
+      </div>
+      <div class="modal-body">
+        <p id="teamNotInDbMessage"></p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="teamNotInDbCancel">Cancel</button>
+        <button type="button" class="btn btn-primary" id="teamNotInDbAdd">Add to DB</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Field E-Stop overlay: covers the entire UI when a hardware e-stop is active. -->
 <!-- Driven by arenaStatus.GpioFieldEStopActive via WebSocket push. -->
 <div id="fieldEstopOverlay" class="field-estop-overlay" style="display:none">
@@ -108,9 +128,10 @@ Simplified match play UI for 10th Street practice field controller.
          without it here a match had to be set up from the Free Practice page instead. */}}
     <span class="mp-team-fields">
       <input type="number" class="mp-team-input" id="team-{{.}}" placeholder="Team #"
-        onchange="markRegistration()">
+        onchange="markRegistration()" onblur="lookUpTeam('{{.}}')">
       <input type="text" class="mp-wpa-input" id="wpaKey-{{.}}" placeholder="WPA key"
-        autocomplete="off" spellcheck="false" onchange="markRegistration()">
+        autocomplete="off" spellcheck="false"
+        onchange="markRegistration()" oninput="markWpaKeyEdited('{{.}}')">
     </span>
     <span class="mp-card-ds" id="ds-{{.}}">—</span>
     <span class="mp-card-stop" id="stop-{{.}}" hidden></span>

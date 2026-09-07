@@ -49,7 +49,11 @@ func TestTeamQuickAddHandler(t *testing.T) {
 	assert.NotNil(t, team)
 	assert.Equal(t, 254, team.Id)
 	assert.Equal(t, "", team.Name)
-	assert.Equal(t, "", team.WpaKey)
+
+	// A key derived from the team number, zero-padded to WPA2's eight-character minimum.
+	// Created without one, the team has no working WiFi and nothing tells the operator so
+	// until a robot fails to associate.
+	assert.Equal(t, "00000254", team.WpaKey)
 }
 
 func TestTeamQuickAddHandlerDuplicate(t *testing.T) {
