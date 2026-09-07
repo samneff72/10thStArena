@@ -35,14 +35,10 @@ const (
 	// Long enough for the end-of-match sounds and the Hub LED post-match sequence to
 	// finish, short enough that a practice round turns around quickly.
 	postMatchAutoClearDelaySec = 5
-	scheduledBreakDelaySec   = 5
-	earlyLateThresholdMin    = 2.5
+	scheduledBreakDelaySec     = 5
+	earlyLateThresholdMin      = 2.5
 
-	// portBounceCooldown bounds how often a station's port can be cycled to rescue a
-	// missing driver station. Long enough that a laptop with its driver station software
-	// closed is not cycled repeatedly, short enough to be worth waiting for.
-	portBounceCooldown = 60 * time.Second
-	MaxMatchGapMin     = 20
+	MaxMatchGapMin = 20
 )
 
 // Progression of match states.
@@ -104,18 +100,16 @@ type Arena struct {
 	// network I/O -- see setupNetwork.
 	mu sync.Mutex
 
-	freePracticeReconfiguring atomic.Bool     // true while AP is being reconfigured for a slot change
-	freePracticeReconfigMu    sync.Mutex      // serialises concurrent SetFreePracticeSlot calls
-	ethernetConfigMutex       sync.Mutex      // guards ethernetConfigGeneration
-	ethernetConfigGeneration  uint64          // increments per request; stale requests are dropped
-	ethernetApplyMutex        sync.Mutex      // serialises wired reconfigurations
-	fieldEStopActive          atomic.Bool     // latched when GPIO field e-stop fires; cleared by ClearFieldEStop()
-	fieldEStopFault           atomic.Uint32   // hardware.FaultKind of the field e-stop; FaultNone when healthy
-	fieldEStopMonitored       atomic.Bool     // true when real GPIO hardware is behind FieldEStop, not the noop
-	fieldDisabled             atomic.Bool     // operator halt: robots disabled, field networking untouched
-	stationLinksKnown         atomic.Bool     // true once the switch has reported driver station port links
-	lastPortBounce            [6]time.Time    // when each station's port was last cycled to rescue a driver station
-	stationDetectorOverride   stationDetector // nil in production; injected in tests
+	freePracticeReconfiguring atomic.Bool   // true while AP is being reconfigured for a slot change
+	freePracticeReconfigMu    sync.Mutex    // serialises concurrent SetFreePracticeSlot calls
+	ethernetConfigMutex       sync.Mutex    // guards ethernetConfigGeneration
+	ethernetConfigGeneration  uint64        // increments per request; stale requests are dropped
+	ethernetApplyMutex        sync.Mutex    // serialises wired reconfigurations
+	fieldEStopActive          atomic.Bool   // latched when GPIO field e-stop fires; cleared by ClearFieldEStop()
+	fieldEStopFault           atomic.Uint32 // hardware.FaultKind of the field e-stop; FaultNone when healthy
+	fieldEStopMonitored       atomic.Bool   // true when real GPIO hardware is behind FieldEStop, not the noop
+	fieldDisabled             atomic.Bool   // operator halt: robots disabled, field networking untouched
+	stationLinksKnown         atomic.Bool   // true once the switch has reported driver station port links
 }
 
 type AllianceStation struct {
@@ -185,9 +179,7 @@ func NewArena(dbPath string) (*Arena, error) {
 // single supported field: a Catalyst 3560-CX wired as the README describes.
 type teamNetwork interface {
 	ConfigureTeamEthernet(teams [6]*model.Team) error
-	GetStationForTeamId(teamId int) (string, error)
 	GetStationPortLinks() ([6]bool, error)
-	CycleStationPort(station int) error
 	GetStatus() string
 }
 
@@ -350,6 +342,38 @@ func (arena *Arena) LoadNextMatch(startScheduledBreak bool) error {
 }
 
 // Assigns the given team to the given station, also substituting it into the match record.
+// SetTeamWpaKeys stores a WPA key against each of the given teams, by team number.
+//
+// Separate from SubstituteTeams, and called before it, so that the network configuration
+// SubstituteTeams already triggers picks the new keys up on its way to the access point.
+// Keeping them apart also leaves SubstituteTeams with upstream's signature.
+//
+// A blank key is skipped rather than written: the field on Match Play is empty until
+// someone types in it, and an empty box should mean "leave this alone", not "erase the key
+// this team has been using".
+func (arena *Arena) SetTeamWpaKeys(keys map[int]string) error {
+	arena.mu.Lock()
+	defer arena.mu.Unlock()
+
+	for teamId, wpaKey := range keys {
+		if teamId <= 0 || wpaKey == "" {
+			continue
+		}
+		team, err := arena.Database.GetTeamById(teamId)
+		if err != nil {
+			return err
+		}
+		if team == nil || team.WpaKey == wpaKey {
+			continue
+		}
+		team.WpaKey = wpaKey
+		if err := arena.Database.UpdateTeam(team); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (arena *Arena) SubstituteTeams(red1, red2, red3, blue1, blue2, blue3 int) error {
 	arena.mu.Lock()
 	defer arena.mu.Unlock()
@@ -1278,47 +1302,6 @@ func (arena *Arena) pollStationPortLinks() {
 	}
 	arena.stationLinksKnown.Store(true)
 	arena.ArenaStatusNotifier.Notify()
-
-	arena.recoverMissingDriverStations(links)
-}
-
-// recoverMissingDriverStations cycles the port of any station that has a team, has a cable,
-// and has no driver station.
-//
-// The driver station releases its address on the match-end transition -- its own logic, not
-// anything the field does -- and Windows then waits for something to change before asking
-// for another. Replugging the cable works because the link event is what prompts it. So
-// does this.
-//
-// Deliberately narrow: a station with no team, no cable, or a working driver station is
-// left alone, and the cooldown keeps a laptop with its driver station software closed from
-// having its port cycled every time round.
-// recoverMissingDriverStations must be called with the arena lock held: it reads each
-// station's Team and DsConn, which the web handlers reassign. Without it the nil check
-// below and the Team.Id read further down can straddle an assignTeam that clears them,
-// dereferencing nil and panicking the process.
-func (arena *Arena) recoverMissingDriverStations(links [6]bool) {
-	for i, station := range stationOrder {
-		allianceStation := arena.AllianceStations[station]
-		if allianceStation.Team == nil || allianceStation.DsConn != nil || !links[i] {
-			continue
-		}
-		if time.Since(arena.lastPortBounce[i]) < portBounceCooldown {
-			continue
-		}
-		arena.lastPortBounce[i] = time.Now()
-
-		log.Printf(
-			"%s has a cable and Team %d registered but no driver station; cycling its port to prompt a renewal.",
-			station,
-			allianceStation.Team.Id,
-		)
-		go func(index int, name string) {
-			if err := arena.teamNetwork.CycleStationPort(index); err != nil {
-				log.Printf("Could not cycle the %s port: %v", name, err)
-			}
-		}(i, station)
-	}
 }
 
 // EnterFreePractice transitions the arena from PreMatch into FreePractice mode.
@@ -1775,99 +1758,9 @@ func shiftWarning(remaining int) bool {
 		(remaining >= 55 && remaining < 58) // 3s before Shift4
 }
 
-// stationDetector abstracts switch-based physical station detection for testability.
-type stationDetector interface {
-	GetStationForTeamId(teamId int) (string, error)
-}
-
-// stationOrder is the fill order for auto-assignment fallback (R1→R2→R3→B1→B2→B3).
+// stationOrder is the alliance stations in a fixed order, for anything that needs to walk
+// them the same way twice.
 var stationOrder = []string{"R1", "R2", "R3", "B1", "B2", "B3"}
-
-// autoAssignTeam detects the physical station for the connecting team (via switch VLAN
-// query) and assigns them to it. Falls back to the first empty station if detection fails.
-// Creates a DB record for the team if one does not already exist.
-// Returns the assigned station name, or "" if unavailable.
-func (arena *Arena) autoAssignTeam(teamId int) string {
-	if arena.MatchState != PreMatch {
-		return ""
-	}
-	if !arena.CurrentMatch.ShouldAllowSubstitution() {
-		return ""
-	}
-
-	// Ensure the team exists in the DB with a valid WPA key.
-	if _, err := arena.ensureTeamExists(teamId); err != nil {
-		log.Printf("Error creating Team %d for auto-assignment: %v", teamId, err)
-		return ""
-	}
-
-	// Try to detect the physical station via the switch VLAN/ARP table.
-	var detector stationDetector = arena.teamNetwork
-	if arena.stationDetectorOverride != nil {
-		detector = arena.stationDetectorOverride
-	}
-	station, err := detector.GetStationForTeamId(teamId)
-	if err != nil {
-		log.Printf("Switch station detection for Team %d failed: %v; falling back to sequential.", teamId, err)
-	}
-
-	// If switch detection succeeded and the station is empty, use it;
-	// otherwise fall back to the first available empty station.
-	if station == "" || arena.AllianceStations[station].Team != nil {
-		station = ""
-		for _, s := range stationOrder {
-			if arena.AllianceStations[s].Team == nil {
-				station = s
-				break
-			}
-		}
-	}
-	if station == "" {
-		log.Printf("No empty station available for auto-assignment of Team %d.", teamId)
-		return ""
-	}
-
-	if err := arena.registerTeamAtStation(teamId, station); err != nil {
-		log.Printf("Error auto-assigning Team %d to %s: %v", teamId, station, err)
-		return ""
-	}
-	log.Printf("Auto-assigned Team %d to station %s.", teamId, station)
-	return station
-}
-
-// registerTeamAtStation puts a team in a station and reconfigures the field for it,
-// removing the team from any station it already occupied.
-//
-// The duplicate clearing matters because a team can now arrive at a station on its own: a
-// laptop moved from one port to another would otherwise leave the team registered in both,
-// and the abandoned station would keep a subnet nobody is using.
-func (arena *Arena) registerTeamAtStation(teamId int, station string) error {
-	for _, other := range stationOrder {
-		if other == station {
-			continue
-		}
-		if as := arena.AllianceStations[other]; as.Team != nil && as.Team.Id == teamId {
-			log.Printf("Team %d moved from %s to %s; clearing %s.", teamId, other, station, other)
-			if err := arena.assignTeam(0, other); err != nil {
-				return err
-			}
-			arena.setMatchTeam(other, 0)
-		}
-	}
-
-	if err := arena.assignTeam(teamId, station); err != nil {
-		return err
-	}
-	arena.setMatchTeam(station, teamId)
-
-	arena.setupNetwork(arena.currentTeams(), false)
-	arena.MatchLoadNotifier.Notify()
-	arena.ArenaStatusNotifier.Notify()
-	if arena.CurrentMatch.Type != model.Test {
-		arena.Database.UpdateMatch(arena.CurrentMatch)
-	}
-	return nil
-}
 
 // setMatchTeam records a station's team on the current match.
 func (arena *Arena) setMatchTeam(station string, teamId int) {
@@ -1885,40 +1778,6 @@ func (arena *Arena) setMatchTeam(station string, teamId int) {
 	case "B3":
 		arena.CurrentMatch.Blue3 = teamId
 	}
-}
-
-// registerStagingTeam assigns a team that connected from a staging subnet to the station
-// whose port it is plugged into.
-//
-// The station is known exactly: staging addresses carry the VLAN in their third octet, so
-// the address a driver station connects from names its port. This is the only identification
-// that survives shared hardware — it comes from the team number configured in the driver
-// station software, not from anything about the laptop.
-func (arena *Arena) registerStagingTeam(teamId int, stationIndex int) string {
-	if !arena.EventSettings.AutoConfigureTeams {
-		return ""
-	}
-	if arena.MatchState != PreMatch && arena.MatchState != FreePractice {
-		return ""
-	}
-	station := stationOrder[stationIndex]
-
-	if as := arena.AllianceStations[station]; as.Team != nil {
-		// Already registered here: nothing to do, and the laptop is about to move onto
-		// the team subnet anyway.
-		return station
-	}
-
-	if _, err := arena.ensureTeamExists(teamId); err != nil {
-		log.Printf("Error creating Team %d seen on the %s staging network: %v", teamId, station, err)
-		return ""
-	}
-	if err := arena.registerTeamAtStation(teamId, station); err != nil {
-		log.Printf("Error registering Team %d at %s: %v", teamId, station, err)
-		return ""
-	}
-	log.Printf("Team %d connected on the %s staging network; registered to %s.", teamId, station, station)
-	return station
 }
 
 // ensureTeamExists returns the team's record, creating it if the field has not seen it

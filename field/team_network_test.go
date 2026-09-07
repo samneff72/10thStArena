@@ -21,31 +21,13 @@ type fakeTeamNetwork struct {
 	applied     [][6]*model.Team
 	entered     chan struct{} // signalled on entry, to observe a call reaching the hardware
 	block       chan struct{} // when non-nil, held until closed, to keep a call in flight
-	station     string
-	stationErr  error
 	statusValue string
 	links       [6]bool
 	linksErr    error
-	cycled      []int
 }
 
 func (f *fakeTeamNetwork) GetStationPortLinks() ([6]bool, error) {
 	return f.links, f.linksErr
-}
-
-func (f *fakeTeamNetwork) CycleStationPort(station int) error {
-	f.mutex.Lock()
-	defer f.mutex.Unlock()
-	f.cycled = append(f.cycled, station)
-	return nil
-}
-
-// cycledPorts reports the stations whose ports were cycled, waiting briefly for the
-// background goroutine that does it.
-func (f *fakeTeamNetwork) cycledPorts() []int {
-	f.mutex.Lock()
-	defer f.mutex.Unlock()
-	return append([]int(nil), f.cycled...)
 }
 
 func (f *fakeTeamNetwork) ConfigureTeamEthernet(teams [6]*model.Team) error {
@@ -59,10 +41,6 @@ func (f *fakeTeamNetwork) ConfigureTeamEthernet(teams [6]*model.Team) error {
 	defer f.mutex.Unlock()
 	f.applied = append(f.applied, teams)
 	return nil
-}
-
-func (f *fakeTeamNetwork) GetStationForTeamId(_ int) (string, error) {
-	return f.station, f.stationErr
 }
 
 func (f *fakeTeamNetwork) GetStatus() string {
@@ -116,87 +94,6 @@ func TestPollStationPortLinksForgetsOnError(t *testing.T) {
 	assert.False(t, arena.stationLinksKnown.Load())
 }
 
-// The driver station releases its address when a match ends and then waits for something
-// to change before asking for another, so a station sits with a cable, a team, and no
-// driver station until someone replugs it. Cycling the port is that change.
-func TestRecoverMissingDriverStation(t *testing.T) {
-	arena, fake := setupTeamNetworkTestArena(t)
-	assert.NoError(t, arena.EnterFreePractice())
-	assert.NoError(t, arena.SetFreePracticeSlot("R2", 841, "key"))
-	fake.links = [6]bool{false, true, false, false, false, false}
-
-	arena.pollStationPortLinks()
-
-	assert.Eventually(
-		t,
-		func() bool { return len(fake.cycledPorts()) == 1 },
-		2*time.Second,
-		5*time.Millisecond,
-		"R2 should have had its port cycled",
-	)
-	assert.Equal(t, 1, fake.cycledPorts()[0], "R2 is the second station")
-}
-
-// Narrow on purpose: nothing is wrong with a station that has no team, no cable, or a
-// working driver station, and cycling its port would break a connection rather than fix one.
-func TestRecoverMissingDriverStationLeavesHealthyStations(t *testing.T) {
-	arena, fake := setupTeamNetworkTestArena(t)
-	assert.NoError(t, arena.EnterFreePractice())
-
-	// R1: no team, but a cable.
-	// R2: a team, no cable.
-	assert.NoError(t, arena.SetFreePracticeSlot("R2", 841, "key"))
-	fake.links = [6]bool{true, false, false, false, false, false}
-
-	arena.pollStationPortLinks()
-	time.Sleep(50 * time.Millisecond)
-	assert.Empty(t, fake.cycledPorts())
-}
-
-// A laptop with its driver station software closed would otherwise have its port cycled
-// every time round.
-func TestRecoverMissingDriverStationCooldown(t *testing.T) {
-	arena, fake := setupTeamNetworkTestArena(t)
-	assert.NoError(t, arena.EnterFreePractice())
-	assert.NoError(t, arena.SetFreePracticeSlot("R2", 841, "key"))
-	fake.links = [6]bool{false, true, false, false, false, false}
-
-	arena.pollStationPortLinks()
-	assert.Eventually(
-		t,
-		func() bool { return len(fake.cycledPorts()) == 1 },
-		2*time.Second,
-		5*time.Millisecond,
-	)
-
-	arena.pollStationPortLinks()
-	time.Sleep(50 * time.Millisecond)
-	assert.Len(t, fake.cycledPorts(), 1, "the cooldown should have held the second attempt")
-
-	// Past the cooldown it tries again, because the station is still broken.
-	arena.lastPortBounce[1] = time.Now().Add(-2 * portBounceCooldown)
-	arena.pollStationPortLinks()
-	assert.Eventually(
-		t,
-		func() bool { return len(fake.cycledPorts()) == 2 },
-		2*time.Second,
-		5*time.Millisecond,
-	)
-}
-
-// Never during a match: cycling a port mid-match would disconnect a driving robot.
-func TestRecoverMissingDriverStationSkippedDuringMatch(t *testing.T) {
-	arena, fake := setupTeamNetworkTestArena(t)
-	assert.NoError(t, arena.EnterFreePractice())
-	assert.NoError(t, arena.SetFreePracticeSlot("R2", 841, "key"))
-	fake.links = [6]bool{false, true, false, false, false, false}
-	arena.MatchState = TeleopPeriod
-
-	arena.pollStationPortLinks()
-	time.Sleep(50 * time.Millisecond)
-	assert.Empty(t, fake.cycledPorts())
-}
-
 // A controller that has just started is otherwise inert: nothing configures the field
 // until someone loads a match, so the switch has no VLANs, a driver station plugged into
 // it gets no address, and it cannot register itself.
@@ -225,105 +122,6 @@ func TestCurrentTeams(t *testing.T) {
 	teams := arena.currentTeams()
 	assert.Equal(t, 841, teams[2].Id, "R3 is the third station")
 	assert.Nil(t, teams[0])
-}
-
-// A laptop on a staging network says which team it is, and its address says which port it
-// is in — the only identification that survives driver stations being shared between teams.
-func TestRegisterStagingTeam(t *testing.T) {
-	arena, _ := setupTeamNetworkTestArena(t)
-
-	assert.Equal(t, "R1", arena.registerStagingTeam(841, 0))
-	assert.NotNil(t, arena.AllianceStations["R1"].Team)
-	assert.Equal(t, 841, arena.AllianceStations["R1"].Team.Id)
-	assert.Equal(t, 841, arena.CurrentMatch.Red1)
-
-	// The team record is created on the spot: a team arriving on a staging network is by
-	// definition one the field was not expecting.
-	team, err := arena.Database.GetTeamById(841)
-	assert.Nil(t, err)
-	assert.NotNil(t, team)
-}
-
-// Moving a laptop from one port to another must not leave the team registered in both,
-// which would keep a subnet alive for a station nobody is using.
-func TestRegisterStagingTeamClearsPreviousStation(t *testing.T) {
-	arena, _ := setupTeamNetworkTestArena(t)
-	assert.Equal(t, "R1", arena.registerStagingTeam(841, 0))
-
-	assert.Equal(t, "B1", arena.registerStagingTeam(841, 3))
-	assert.Nil(t, arena.AllianceStations["R1"].Team, "R1 should have been cleared")
-	assert.Equal(t, 0, arena.CurrentMatch.Red1)
-	assert.Equal(t, 841, arena.AllianceStations["B1"].Team.Id)
-	assert.Equal(t, 841, arena.CurrentMatch.Blue1)
-}
-
-// An occupied station is left alone: the laptop there is about to move onto that team's
-// own subnet anyway.
-func TestRegisterStagingTeamLeavesOccupiedStation(t *testing.T) {
-	arena, _ := setupTeamNetworkTestArena(t)
-	assert.Equal(t, "R1", arena.registerStagingTeam(841, 0))
-
-	assert.Equal(t, "R1", arena.registerStagingTeam(254, 0))
-	assert.Equal(t, 841, arena.AllianceStations["R1"].Team.Id, "the registered team stands")
-}
-
-// Auto-configuration off means the operator wants to assign stations by hand.
-func TestRegisterStagingTeamRespectsAutoConfigureSetting(t *testing.T) {
-	arena, _ := setupTeamNetworkTestArena(t)
-	arena.EventSettings.AutoConfigureTeams = false
-
-	assert.Equal(t, "", arena.registerStagingTeam(841, 0))
-	assert.Nil(t, arena.AllianceStations["R1"].Team)
-}
-
-// Not mid-match: a team turning up on a staging network then is a distraction, not a
-// registration.
-func TestRegisterStagingTeamSkippedDuringMatch(t *testing.T) {
-	arena, _ := setupTeamNetworkTestArena(t)
-	arena.MatchState = TeleopPeriod
-
-	assert.Equal(t, "", arena.registerStagingTeam(841, 0))
-	assert.Nil(t, arena.AllianceStations["R1"].Team)
-}
-
-// lastApplied reports the most recent configuration, waiting briefly for the background
-// goroutine to run.
-func (f *fakeTeamNetwork) lastApplied(t *testing.T) [6]*model.Team {
-	t.Helper()
-	var last [6]*model.Team
-	assert.Eventually(
-		t,
-		func() bool {
-			f.mutex.Lock()
-			defer f.mutex.Unlock()
-			if len(f.applied) == 0 {
-				return false
-			}
-			last = f.applied[len(f.applied)-1]
-			return true
-		},
-		2*time.Second,
-		5*time.Millisecond,
-		"expected the wired network to be configured",
-	)
-	return last
-}
-
-func (f *fakeTeamNetwork) applyCount() int {
-	f.mutex.Lock()
-	defer f.mutex.Unlock()
-	return len(f.applied)
-}
-
-// setupTeamNetworkTestArena returns an arena with the wired network faked and network
-// security on. The access point is left as built by LoadSettings, which has security off
-// and so returns without attempting any HTTP.
-func setupTeamNetworkTestArena(t *testing.T) (*Arena, *fakeTeamNetwork) {
-	arena := setupTestArena(t)
-	fake := &fakeTeamNetwork{}
-	arena.teamNetwork = fake
-	arena.EventSettings.NetworkSecurityEnabled = true
-	return arena, fake
 }
 
 // A free practice slot used to get an SSID but no VLAN subinterface and no DHCP scope, so
@@ -480,4 +278,44 @@ func TestConfigureTeamEthernetAppliesOnlyTheLatestRequest(t *testing.T) {
 	for i := 0; i <= 3; i++ {
 		assert.NotNil(t, last[i], fmt.Sprintf("station %d missing from the final configuration", i))
 	}
+}
+
+// setupTeamNetworkTestArena returns an arena with the wired network faked and network
+// security on. The access point is left as built by LoadSettings, which has security off
+// and so returns without attempting any HTTP.
+func setupTeamNetworkTestArena(t *testing.T) (*Arena, *fakeTeamNetwork) {
+	arena := setupTestArena(t)
+	fake := &fakeTeamNetwork{}
+	arena.teamNetwork = fake
+	arena.EventSettings.NetworkSecurityEnabled = true
+	return arena, fake
+}
+
+func (f *fakeTeamNetwork) applyCount() int {
+	f.mutex.Lock()
+	defer f.mutex.Unlock()
+	return len(f.applied)
+}
+
+// lastApplied reports the most recent configuration, waiting briefly for the background
+// goroutine to run.
+func (f *fakeTeamNetwork) lastApplied(t *testing.T) [6]*model.Team {
+	t.Helper()
+	var last [6]*model.Team
+	assert.Eventually(
+		t,
+		func() bool {
+			f.mutex.Lock()
+			defer f.mutex.Unlock()
+			if len(f.applied) == 0 {
+				return false
+			}
+			last = f.applied[len(f.applied)-1]
+			return true
+		},
+		2*time.Second,
+		5*time.Millisecond,
+		"expected the wired network to be configured",
+	)
+	return last
 }

@@ -103,8 +103,15 @@ Simplified match play UI for 10th Street practice field controller.
 <div class="mp-card {{if eq (slice . 0 1) "R"}}card-red{{else}}card-blue{{end}}" id="card-{{.}}">
   <div class="mp-card-top">
     <span class="mp-card-label">{{.}}</span>
-    <input type="number" class="mp-team-input" id="team-{{.}}" placeholder="—"
-      onchange="markRegistration()">
+    {{/* Team number and WPA key share the space the number used to have on its own. Both
+         are needed at registration: the key is what the radio is configured with, and
+         without it here a match had to be set up from the Free Practice page instead. */}}
+    <span class="mp-team-fields">
+      <input type="number" class="mp-team-input" id="team-{{.}}" placeholder="Team #"
+        onchange="markRegistration()">
+      <input type="text" class="mp-wpa-input" id="wpaKey-{{.}}" placeholder="WPA key"
+        autocomplete="off" spellcheck="false" onchange="markRegistration()">
+    </span>
     <span class="mp-card-ds" id="ds-{{.}}">—</span>
     <span class="mp-card-stop" id="stop-{{.}}" hidden></span>
   </div>

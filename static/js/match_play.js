@@ -34,6 +34,17 @@ const registerTeams = function () {
     Blue1: getTeamNumber("B1"),
     Blue2: getTeamNumber("B2"),
     Blue3: getTeamNumber("B3"),
+    // Sent alongside the numbers so one Register does both: the key is what the radio is
+    // configured with, and a station registered without one has no working WiFi. Blank
+    // leaves whatever key the team already has rather than clearing it.
+    WpaKeys: {
+      R1: getWpaKey("R1"),
+      R2: getWpaKey("R2"),
+      R3: getWpaKey("R3"),
+      B1: getWpaKey("B1"),
+      B2: getWpaKey("B2"),
+      B3: getWpaKey("B3"),
+    },
   };
   websocket.send("registerTeams", teams);
   document.getElementById("btnRegister").disabled = true;
@@ -90,6 +101,10 @@ const setTestMatchName = function () {
   websocket.send("setTestMatchName", document.getElementById("testMatchName").value);
 };
 
+const getWpaKey = function (station) {
+  return document.getElementById("wpaKey-" + station).value.trim();
+};
+
 const getTeamNumber = function (station) {
   const val = document.getElementById("team-" + station).value.trim();
   return val ? parseInt(val) : 0;
@@ -121,13 +136,28 @@ const handleArenaStatus = function (data) {
     const bypassChk = document.getElementById("bypass-" + station);
 
     // DS / Robot status badge.
+    //
+    // Port link is the fallback, and the only thing that sees an unregistered station at
+    // all: with no team there is no subnet, so a laptop gets no address and never connects.
+    // The switch reports the cable regardless of any of that.
+    const registered = Boolean(st.Team && st.Team.Id);
     if (st.DsConn && st.DsConn.DsLinked) {
       const v = st.DsConn.BatteryVoltage.toFixed(1) + "V";
       dsEl.textContent = v;
       dsEl.dataset.ok = st.DsConn.RobotLinked ? "true" : "mid";
+      dsEl.title = "";
+    } else if (data.StationLinksKnown && st.PortLinked && !registered) {
+      dsEl.textContent = "CABLE";
+      dsEl.dataset.ok = "mid";
+      dsEl.title = "Something is plugged into this port, but no team is registered here";
+    } else if (data.StationLinksKnown && registered && !st.PortLinked) {
+      dsEl.textContent = "No cable";
+      dsEl.dataset.ok = "false";
+      dsEl.title = "A team is registered here but nothing is plugged into the port";
     } else {
       dsEl.textContent = "No DS";
       dsEl.dataset.ok = "false";
+      dsEl.title = "";
     }
 
     // A team that is fully connected and still bypassed almost certainly should not be.
@@ -252,6 +282,14 @@ const handleMatchLoad = function (data) {
     const input = document.getElementById("team-" + station);
     input.value = team ? team.Id : "";
     input.disabled = !data.AllowSubstitution;
+
+    // Not overwritten while it is being typed into: a match load can land at any moment,
+    // and losing a half-entered key to one would be maddening.
+    const wpa = document.getElementById("wpaKey-" + station);
+    if (document.activeElement !== wpa) {
+      wpa.value = team ? team.WpaKey || "" : "";
+    }
+    wpa.disabled = !data.AllowSubstitution;
   }
   document.getElementById("btnRegister").disabled = true;
   document.getElementById("autoWinnerMode").value = data.AutoWinnerMode;

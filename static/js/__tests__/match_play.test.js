@@ -75,6 +75,7 @@ function buildDom() {
         <button id="estop-${s}" data-station="${s}">E-STOP</button>
         <input type="checkbox" id="bypass-${s}">
         <input type="number" id="team-${s}">
+        <input type="text" id="wpaKey-${s}">
       </div>`
     ).join("")}
     <button id="btnRegister" disabled></button>
@@ -402,6 +403,42 @@ describe("handleMatchLoad", () => {
     expect(document.getElementById("team-R1").value).toBe("254");
     expect(document.getElementById("team-B1").value).toBe("1114");
     expect(document.getElementById("team-R2").value).toBe("");
+  });
+
+  test("populates WPA keys alongside team numbers", () => {
+    handleMatchLoad({
+      Match: { LongName: "Q1", Type: 2 },
+      AllowSubstitution: true,
+      IsReplay: false,
+      Teams: {
+        R1: { Id: 254, WpaKey: "key254" }, R2: null, R3: null,
+        B1: { Id: 1114 }, B2: null, B3: null,
+      },
+    });
+    expect(document.getElementById("wpaKey-R1").value).toBe("key254");
+    // A team with no key stored leaves the box empty rather than showing "undefined".
+    expect(document.getElementById("wpaKey-B1").value).toBe("");
+    expect(document.getElementById("wpaKey-R2").value).toBe("");
+  });
+
+  test("does not overwrite a WPA key being typed into", () => {
+    const wpa = document.getElementById("wpaKey-R1");
+    wpa.value = "half-typed";
+    wpa.focus();
+
+    // A match load can land at any moment; losing a half-entered key to one would be
+    // maddening, so the focused field is left alone.
+    handleMatchLoad({
+      Match: { LongName: "Q1", Type: 2 },
+      AllowSubstitution: true,
+      IsReplay: false,
+      Teams: {
+        R1: { Id: 254, WpaKey: "fromServer" }, R2: null, R3: null,
+        B1: null, B2: null, B3: null,
+      },
+    });
+    expect(wpa.value).toBe("half-typed");
+    expect(document.getElementById("team-R1").value).toBe("254");
   });
 
   test("disables team inputs when AllowSubstitution=false", () => {

@@ -21,14 +21,13 @@
 ! as a secondary. A dedicated management VLAN would be tidier, but nothing here uses one
 ! and a file that describes a field nobody has built is worse than an untidy one.
 !
-! Gi0/1-6 are not arbitrary. network/switch.go hardcodes them as dsPortInterfaces in
-! station order and shuts and reopens each one around a VLAN change, which is what makes a
-! driver station laptop re-request an address on its new subnet. Move a station to another
-! port and it keeps the previous match's address.
+! Gi0/1-6 are not arbitrary. network/switch.go hardcodes them as dsPortInterfaces in station
+! order, and the baseline builds each one as that station's access port. Move a station to
+! another port and it lands on the wrong team's VLAN.
 !
 ! Everything under "interface Vlan10" through "interface Vlan60", and every dhcp pool named
-! dhcpNN or stagingNN, is rewritten by bioarena on each match load. The addresses below are
-! only placeholders so the SVIs exist before the first match.
+! dhcpNN, is rewritten by bioarena on each match load. The addresses below are only
+! placeholders so the SVIs exist before the first match.
 !
 version 15.2
 no service pad
@@ -156,8 +155,8 @@ interface GigabitEthernet0/12
  switchport access vlan 1
  switchport mode access
 !
-! Team SVIs. Placeholders only -- bioarena replaces the address on each one at match load,
-! or swaps in a 172.16.<vlan>.0/24 staging subnet when the station has no team.
+! Team SVIs. Placeholders only -- bioarena replaces the address on each one at match load.
+! A station with no team registered is left with no address at all.
 interface Vlan10
  ip address 10.0.1.4 255.255.255.0
  ip access-group DS-FMS in

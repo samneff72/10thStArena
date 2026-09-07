@@ -273,8 +273,35 @@ input[data-changed="true"], select[data-changed="true"] {
   color: #aaa;
   min-width: 1.8ch;
 }
-.mp-team-input {
+/* Team number and WPA key stacked in the width the number alone used to have, so adding
+   the key costs no layout. Six cards across a kiosk leaves no room to put them side by
+   side and still read either. */
+.mp-team-fields {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.mp-wpa-input {
+  width: 100%;
+  min-width: 0;
+  background: #111;
+  color: #bbb;
+  border: 1px solid #444;
+  border-radius: 4px;
+  padding: 1px 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  height: 20px;
+}
+.mp-wpa-input::placeholder {
+  color: #666;
+  font-style: normal;
+  opacity: 1;
+}
+.mp-team-input {
+  width: 100%;
   min-width: 0;
   background: #111;
   color: #eee;

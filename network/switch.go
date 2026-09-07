@@ -10,8 +10,6 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
-	"regexp"
-	"strconv"
 	"strings"
 
 	"log"
@@ -50,8 +48,8 @@ var switchTrunkInterfaces = [2]string{"GigabitEthernet0/7", "GigabitEthernet0/8"
 // Arena -> Settings -> LEDs, the same way the Pi's address is static rather than leased.
 //
 // Nothing on the field needs to reach the gateway; bioarena only ever sends to it. So unlike
-// a driver station port, this does not need a VLAN, a DHCP pool, or the shut/reopen cycling
-// dsPortInterfaces gets -- it is set once by the baseline and left alone.
+// a driver station port it needs no VLAN of its own and no DHCP pool -- it is set once by
+// the baseline and left alone.
 const dmxHubPort = "GigabitEthernet0/9"
 
 // vlanNames label the VLAN database, so "show vlan brief" on the switch reads as the field
@@ -76,58 +74,14 @@ const (
 	switchApSubnetAddress = "192.168.69.2"
 )
 
-// Staging subnets keep an unregistered station usable: a laptop plugged into it still gets
-// an address and can still reach the FMS, so its driver station announces which team it
-// belongs to. Without them an unregistered station is a dead port, and a laptop in the
-// wrong one produces silence -- no address, so no connection, so nothing to report.
-//
-// 172.16/12 rather than somewhere in 10/8 because team subnets take 10.TE.AM.0/24 from the
-// team number, and a team numbered under 100 lands on 10.0.NN.0/24 -- team 33 would collide
-// with a staging subnet keyed the obvious way. The driver station does not care what its
-// own address is, only that it can reach the FMS.
-const stagingSubnetPrefix = "172.16"
-
-// stagingLease is deliberately short: a laptop holds a staging address only until its team
-// is registered and the station is rebuilt beneath it.
-//
-// IOS reads "lease <n>" as n DAYS -- the syntax is "lease {days [hours [minutes]]}", so
-// five minutes is "0 0 5". Written as bare "5" this was a five-day lease on an address the
-// laptop should hold for seconds.
-const stagingLease = "0 0 5"
-
-// stagingSubnet returns the staging network for a VLAN: 172.16.<vlan>.0/24.
-func stagingSubnet(vlan int) string {
-	return fmt.Sprintf("%s.%d", stagingSubnetPrefix, vlan)
-}
-
-// StagingStationForAddress reports which alliance station a staging address belongs to, by
-// index in station order. The VLAN is the third octet, so the address alone identifies the
-// port a driver station is plugged into -- which is the whole point of the staging subnets.
-func StagingStationForAddress(address string) (int, bool) {
-	octets := strings.Split(address, ".")
-	if len(octets) != 4 || octets[0]+"."+octets[1] != stagingSubnetPrefix {
-		return 0, false
-	}
-	vlan, err := strconv.Atoi(octets[2])
-	if err != nil {
-		return 0, false
-	}
-	for i, stationVlan := range vlanForStation {
-		if stationVlan == vlan {
-			return i, true
-		}
-	}
-	return 0, false
-}
-
 // dsPortInterfaces is the driver station port for each alliance station, in station order.
 // A Catalyst 3560-CX with the stations on its first six ports is the assumed field, so
 // wire R1 to Gi0/1 and so on; the trunks to the Pi and the access point go on the ports
 // above these.
 //
-// These are shut and reopened around a VLAN change, which is what makes a laptop
-// re-request an address on its new subnet rather than keeping the previous match's. Only
-// the stations whose team changed are cycled.
+// Used only to build the baseline's access ports. Bioarena no longer shuts and reopens
+// them around a VLAN change: the cycling cost seconds on every match load, and a driver
+// station that needs a new address gets one by reconnecting.
 var dsPortInterfaces = [6]string{
 	"GigabitEthernet0/1",
 	"GigabitEthernet0/2",
@@ -203,7 +157,7 @@ func (sw *Switch) ConfigureTeamEthernet(teams [6]*model.Team) error {
 
 	// With no address there is nothing to configure. Without this the Telnet dial fails
 	// on every match load and pins the badge red, which reads as a broken switch rather
-	// than an absent one. GetStationForTeamId already guards the same way.
+	// than an absent one.
 	if sw.address == "" {
 		sw.setStatus("DISABLED")
 		return nil
@@ -235,15 +189,6 @@ func (sw *Switch) ConfigureTeamEthernet(teams [6]*model.Team) error {
 		rebuild[i] = full || desired[i] != sw.applied[i]
 	}
 
-	// Shut down DS ethernet ports to prevent conflicts during VLAN reconfiguration. Only
-	// the stations being rebuilt: cycling a port disconnects the driver station behind it,
-	// and in free practice the others are mid-drive.
-	if portsDown := portCommands(rebuild, "shutdown"); portsDown != "" {
-		if _, err := sw.runConfigCommand(portsDown); err != nil {
-			return sw.fail(err)
-		}
-	}
-
 	// Remove the old team VLANs to reset the switch state.
 	removeTeamVlansCommand := ""
 	for i, vlan := range vlanForStation {
@@ -251,8 +196,7 @@ func (sw *Switch) ConfigureTeamEthernet(teams [6]*model.Team) error {
 			continue
 		}
 		removeTeamVlansCommand += fmt.Sprintf(
-			"interface Vlan%d\nno ip address\nno ip dhcp pool dhcp%d\nno ip dhcp pool staging%d\n",
-			vlan, vlan, vlan,
+			"interface Vlan%d\nno ip address\nno ip dhcp pool dhcp%d\n", vlan, vlan,
 		)
 	}
 	_, err := sw.runConfigCommand(removeTeamVlansCommand)
@@ -300,30 +244,14 @@ func (sw *Switch) ConfigureTeamEthernet(teams [6]*model.Team) error {
 			switchTeamGatewayAddress,
 		)
 	}
-	// An empty station gets a staging subnet instead of nothing, so a laptop plugged into
-	// it can still reach the FMS and say which team it is.
-	addStagingVlan := func(vlan int) {
-		subnet := stagingSubnet(vlan)
-		addTeamVlansCommand += fmt.Sprintf(
-			"ip dhcp excluded-address %s.1 %s.19\n"+
-				"ip dhcp pool staging%d\n"+
-				"network %s.0 255.255.255.0\n"+
-				"default-router %s.1\n"+
-				"lease %s\n"+
-				"interface Vlan%d\nip address %s.1 255.255.255.0\n",
-			subnet, subnet, vlan, subnet, subnet, stagingLease, vlan, subnet,
-		)
-	}
-
+	// An empty station simply gets no subnet, as upstream leaves it. Giving one an address
+	// so that a laptop plugged into it could announce its team was the staging-subnet
+	// scheme behind auto-registration, which this fork no longer does.
 	for i, vlan := range vlanForStation {
 		if !rebuild[i] {
 			continue
 		}
-		if teams[i] == nil {
-			addStagingVlan(vlan)
-		} else {
-			addTeamVlan(teams[i], vlan)
-		}
+		addTeamVlan(teams[i], vlan)
 	}
 	if len(addTeamVlansCommand) > 0 {
 		_, err = sw.runConfigCommand(addTeamVlansCommand)
@@ -334,13 +262,6 @@ func (sw *Switch) ConfigureTeamEthernet(teams [6]*model.Team) error {
 
 	// Give some time for the configuration to take before another one can be attempted.
 	time.Sleep(sw.configBackoffDuration)
-
-	// Bring back up exactly the ports that were shut.
-	if portsUp := portCommands(rebuild, "no shutdown"); portsUp != "" {
-		if _, err := sw.runConfigCommand(portsUp); err != nil {
-			return sw.fail(err)
-		}
-	}
 
 	log.Printf("Switch configured: %s.", describeStations(desired, rebuild))
 	sw.applied = desired
@@ -496,47 +417,6 @@ func (sw *Switch) applyBaseline() error {
 	return nil
 }
 
-// CycleStationPort shuts and reopens one station's driver station port.
-//
-// This exists to rescue a driver station that released its address and did not ask for
-// another. The driver station releases on the match-end transition by its own logic, and
-// Windows then sits there unaddressed until something changes -- replugging the cable
-// works, and so does this, because the link event is what prompts it to re-request.
-func (sw *Switch) CycleStationPort(station int) error {
-	sw.mutex.Lock()
-	defer sw.mutex.Unlock()
-
-	if sw.address == "" {
-		return errSwitchNotConfigured
-	}
-
-	var only [6]bool
-	only[station] = true
-
-	if _, err := sw.runConfigCommand(portCommands(only, "shutdown")); err != nil {
-		return fmt.Errorf("shutting %s: %w", dsPortInterfaces[station], err)
-	}
-	time.Sleep(sw.configPauseDuration)
-	if _, err := sw.runConfigCommand(portCommands(only, "no shutdown")); err != nil {
-		// Leaving a station's port down is worse than never having touched it, so this
-		// failure is reported loudly rather than folded into the caller's silence.
-		return fmt.Errorf("reopening %s: %w", dsPortInterfaces[station], err)
-	}
-	return nil
-}
-
-// portCommands builds an interface block applying the given verb to each selected
-// station's driver station port.
-func portCommands(stations [6]bool, verb string) string {
-	command := ""
-	for i, selected := range stations {
-		if selected {
-			command += fmt.Sprintf("interface %s\n%s\n", dsPortInterfaces[i], verb)
-		}
-	}
-	return command
-}
-
 // fail marks the configuration as failed. The switch is left half configured, so the
 // recorded state is no longer trustworthy and the next call reconciles in full.
 func (sw *Switch) fail(err error) error {
@@ -606,33 +486,4 @@ func (sw *Switch) runConfigCommand(command string) (string, error) {
 		command += "\n"
 	}
 	return sw.runCommand(fmt.Sprintf("config terminal\n%send\n", command))
-}
-
-var vlanToAllianceStation = map[int]string{
-	10: "R1", 20: "R2", 30: "R3",
-	40: "B1", 50: "B2", 60: "B3",
-}
-
-// GetStationForTeamId queries the switch ARP table to determine which alliance station
-// a team is physically connected to. Returns "" if the switch is unconfigured or the
-// team IP has no ARP entry.
-func (sw *Switch) GetStationForTeamId(teamId int) (string, error) {
-	if sw.address == "" {
-		return "", nil
-	}
-	teamIp := fmt.Sprintf("10.%d.%d.5", teamId/100, teamId%100)
-	output, err := sw.runCommand(fmt.Sprintf("show ip arp %s\n", teamIp))
-	if err != nil {
-		return "", err
-	}
-	// Cisco IOS output example:
-	//   Protocol  Address     Age(min)  Hardware Addr   Type   Interface
-	//   Internet  10.2.54.5       2     0050.b6ff.ee5   ARPA   Vlan20
-	re := regexp.MustCompile(`Vlan(\d+)`)
-	matches := re.FindStringSubmatch(output)
-	if matches == nil {
-		return "", nil
-	}
-	vlan, _ := strconv.Atoi(matches[1])
-	return vlanToAllianceStation[vlan], nil
 }

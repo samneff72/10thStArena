@@ -12,10 +12,10 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/mitchellh/mapstructure"
 	"github.com/team841/bioarena/field"
 	"github.com/team841/bioarena/model"
 	"github.com/team841/bioarena/websocket"
-	"github.com/mitchellh/mapstructure"
 )
 
 var testMatchCounter int
@@ -102,12 +102,36 @@ func (web *Web) matchPlayWebsocketHandler(w http.ResponseWriter, r *http.Request
 				Blue1 int
 				Blue2 int
 				Blue3 int
+				// Keyed by station, since that is what the operator typed into. Mapped onto
+				// team numbers below, because a key belongs to a team and not to a seat.
+				WpaKeys map[string]string
 			}{}
 			err = mapstructure.Decode(data, &args)
 			if err != nil {
 				ws.WriteError(err.Error())
 				continue
 			}
+
+			// Stored before the substitution, so the network configuration it triggers
+			// carries the new keys to the access point. Doing it after would leave the
+			// radios on the previous keys until something else reconfigured them.
+			if len(args.WpaKeys) > 0 {
+				teamForStation := map[string]int{
+					"R1": args.Red1, "R2": args.Red2, "R3": args.Red3,
+					"B1": args.Blue1, "B2": args.Blue2, "B3": args.Blue3,
+				}
+				keys := make(map[int]string, len(args.WpaKeys))
+				for station, key := range args.WpaKeys {
+					if teamId, ok := teamForStation[station]; ok {
+						keys[teamId] = key
+					}
+				}
+				if err = web.arena.SetTeamWpaKeys(keys); err != nil {
+					ws.WriteError(err.Error())
+					continue
+				}
+			}
+
 			err = web.arena.SubstituteTeams(args.Red1, args.Red2, args.Red3, args.Blue1, args.Blue2, args.Blue3)
 			if err != nil {
 				ws.WriteError(err.Error())
@@ -124,7 +148,7 @@ func (web *Web) matchPlayWebsocketHandler(w http.ResponseWriter, r *http.Request
 				continue
 			}
 			as := web.arena.AllianceStations[station]
-		as.Bypass.Store(!as.Bypass.Load())
+			as.Bypass.Store(!as.Bypass.Load())
 			if err = ws.WriteNotifier(web.arena.ArenaStatusNotifier); err != nil {
 				log.Println(err)
 			}
@@ -236,4 +260,3 @@ func (web *Web) matchPlayWebsocketHandler(w http.ResponseWriter, r *http.Request
 		}
 	}
 }
-

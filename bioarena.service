@@ -31,11 +31,10 @@ ExecStartPre=-/sbin/ip addr add 10.0.100.5/24 dev eth0
 # laptop cabled straight to the AP. Same VLAN as this interface, so no routing, no gateway.
 ExecStartPre=-/sbin/ip addr add 192.168.69.5/24 dev eth0
 
-# Routes back to everything the switch routes to us. The driver stations live on subnets
-# the switch owns -- 10.TE.AM.0/24 per team, 172.16.<vlan>.0/24 for an unregistered
-# station -- and their packets arrive here fine. Without these the replies have nowhere to
-# go: the TCP handshake never completes, so a driver station sits connected to a field that
-# never acknowledges it.
+# A route back to everything the switch routes to us. The driver stations live on the
+# subnets the switch owns, 10.TE.AM.0/24 per team, and their packets arrive here fine.
+# Without this the replies have nowhere to go: the TCP handshake never completes, so a
+# driver station sits connected to a field that never acknowledges it.
 #
 # There is deliberately no default route. The field has no path to the internet, and a
 # default here would send this Pi's own traffic into it.
@@ -44,7 +43,6 @@ ExecStartPre=-/sbin/ip addr add 192.168.69.5/24 dev eth0
 # on team_network_driver: local the per-VLAN subinterfaces are likewise more specific, so
 # these are inert there rather than wrong.
 ExecStartPre=-/sbin/ip route add 10.0.0.0/8 via 10.0.100.3 dev eth0
-ExecStartPre=-/sbin/ip route add 172.16.0.0/12 via 10.0.100.3 dev eth0
 
 # The binary is made executable at deploy time, by the account that copied it. Doing it
 # here instead fails: this unit runs as bioarena, chmod requires ownership, and the

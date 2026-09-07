@@ -22,45 +22,35 @@ func TestConfigureSwitch(t *testing.T) {
 	sw.configBackoffDuration = time.Millisecond
 	sw.configPauseDuration = time.Millisecond
 	expectedResetCommand := "password\nenable\npassword\nterminal length 0\nconfig terminal\n" +
-		"interface Vlan10\nno ip address\nno ip dhcp pool dhcp10\nno ip dhcp pool staging10\n" +
-		"interface Vlan20\nno ip address\nno ip dhcp pool dhcp20\nno ip dhcp pool staging20\n" +
-		"interface Vlan30\nno ip address\nno ip dhcp pool dhcp30\nno ip dhcp pool staging30\n" +
-		"interface Vlan40\nno ip address\nno ip dhcp pool dhcp40\nno ip dhcp pool staging40\n" +
-		"interface Vlan50\nno ip address\nno ip dhcp pool dhcp50\nno ip dhcp pool staging50\n" +
-		"interface Vlan60\nno ip address\nno ip dhcp pool dhcp60\nno ip dhcp pool staging60\n" +
+		"interface Vlan10\nno ip address\nno ip dhcp pool dhcp10\n" +
+		"interface Vlan20\nno ip address\nno ip dhcp pool dhcp20\n" +
+		"interface Vlan30\nno ip address\nno ip dhcp pool dhcp30\n" +
+		"interface Vlan40\nno ip address\nno ip dhcp pool dhcp40\n" +
+		"interface Vlan50\nno ip address\nno ip dhcp pool dhcp50\n" +
+		"interface Vlan60\nno ip address\nno ip dhcp pool dhcp60\n" +
 		"end\nexit\n"
 
-	// First configuration of a run: the baseline and its save come first, then every port
-	// is cycled, every VLAN removed, and every station given a staging subnet so a laptop
-	// plugged into it can still say which team it is.
-	commands := mockTelnetMulti(t, sw.port, 6)
+	// First configuration of a run, with no teams: the baseline and its save, then the VLAN
+	// removal. Three connections and no more -- an empty station gets no subnet at all, so
+	// there is nothing to add, and no driver station port is touched.
+	commands := mockTelnetMulti(t, sw.port, 3)
 	assert.Nil(t, sw.ConfigureTeamEthernet([6]*model.Team{nil, nil, nil, nil, nil, nil}))
 	assert.Contains(t, commands.at(0), "ip routing\n")
 	assert.Contains(t, commands.at(1), "write memory")
-	assert.Contains(t, commands.at(2), "interface GigabitEthernet0/1\nshutdown\n")
-	assert.Equal(t, expectedResetCommand, commands.at(3))
-	assert.Contains(t, commands.at(4), "ip dhcp pool staging10\nnetwork 172.16.10.0 255.255.255.0\n")
-
-	// "lease 0 0 5" is five minutes. IOS reads a bare number as days, so "lease 5" would
-	// hold an address for five days that a laptop should keep for seconds.
-	assert.Contains(t, commands.at(4), "lease 0 0 5\n")
-	assert.Contains(t, commands.at(4), "interface Vlan60\nip address 172.16.60.1 255.255.255.0\n")
-	assert.Contains(t, commands.at(5), "interface GigabitEthernet0/1\nno shutdown\n")
+	assert.Equal(t, expectedResetCommand, commands.at(2))
 	assert.Equal(t, "ACTIVE", sw.Status)
 
-	// Should configure one team if only one is present. Only B2 changed, so only its port
-	// is cycled and only its VLAN rebuilt -- the other five are already as wanted.
+	// One team present. Only B2 changed, so only its VLAN is rebuilt: one removal and one
+	// add, and nothing at all for the five stations already as wanted.
 	sw.port += 1
-	commands = mockTelnetMulti(t, sw.port, 4)
+	commands = mockTelnetMulti(t, sw.port, 2)
 	assert.Nil(t, sw.ConfigureTeamEthernet([6]*model.Team{nil, nil, nil, nil, {Id: 254}, nil}))
-	assert.Contains(t, commands.at(0), "interface GigabitEthernet0/5\nshutdown\n")
-	assert.NotContains(t, commands.at(0), "GigabitEthernet0/1")
 	assert.Equal(
 		t,
 		"password\nenable\npassword\nterminal length 0\nconfig terminal\n"+
-			"interface Vlan50\nno ip address\nno ip dhcp pool dhcp50\nno ip dhcp pool staging50\n"+
+			"interface Vlan50\nno ip address\nno ip dhcp pool dhcp50\n"+
 			"end\nexit\n",
-		commands.at(1),
+		commands.at(0),
 	)
 	assert.Equal(
 		t,
@@ -69,19 +59,18 @@ func TestConfigureSwitch(t *testing.T) {
 			"network 10.2.54.0 255.255.255.0\ndefault-router 10.2.54.4\nlease 7\n"+
 			"interface Vlan50\nip address 10.2.54.4 255.255.255.0\n"+
 			"end\nexit\n",
-		commands.at(2),
+		commands.at(1),
 	)
-	assert.Contains(t, commands.at(3), "interface GigabitEthernet0/5\nno shutdown\n")
 
 	// Should configure all teams if all are present. Every station changes here -- B2
 	// swaps 254 for 1678 -- so this is a full six-VLAN rebuild again.
 	sw.port += 1
-	commands = mockTelnetMulti(t, sw.port, 4)
+	commands = mockTelnetMulti(t, sw.port, 2)
 	assert.Nil(
 		t,
 		sw.ConfigureTeamEthernet([6]*model.Team{{Id: 1114}, {Id: 254}, {Id: 296}, {Id: 1503}, {Id: 1678}, {Id: 1538}}),
 	)
-	assert.Equal(t, expectedResetCommand, commands.at(1))
+	assert.Equal(t, expectedResetCommand, commands.at(0))
 	assert.Equal(
 		t,
 		"password\nenable\npassword\nterminal length 0\nconfig terminal\n"+
@@ -104,7 +93,7 @@ func TestConfigureSwitch(t *testing.T) {
 			"network 10.15.38.0 255.255.255.0\ndefault-router 10.15.38.4\nlease 7\n"+
 			"interface Vlan60\nip address 10.15.38.4 255.255.255.0\n"+
 			"end\nexit\n",
-		commands.at(2),
+		commands.at(1),
 	)
 }
 
@@ -114,45 +103,6 @@ func TestConfigureSwitchWithoutAddress(t *testing.T) {
 	sw := NewSwitch(SwitchConfig{Address: "", Password: "password"})
 	assert.Nil(t, sw.ConfigureTeamEthernet([6]*model.Team{{Id: 841}, nil, nil, nil, nil, nil}))
 	assert.Equal(t, "DISABLED", sw.Status)
-}
-
-func TestGetStationForTeamId(t *testing.T) {
-	sw := NewSwitch(SwitchConfig{Address: "127.0.0.1", Password: "password"})
-	sw.port = 9060
-
-	ciscoArpOutput := "password\nenable\npassword\nterminal length 0\n" +
-		"Protocol  Address     Age(min)  Hardware Addr   Type   Interface\n" +
-		"Internet  10.2.54.5       2     0050.b6ff.ee5   ARPA   Vlan20\n" +
-		"exit\n"
-
-	// Returns correct station when switch ARP table has an entry.
-	var command string
-	mockTelnetSingleWithResponse(t, sw.port, ciscoArpOutput, &command)
-	station, err := sw.GetStationForTeamId(254)
-	assert.Nil(t, err)
-	assert.Equal(t, "R2", station)
-
-	// Returns "" when ARP table has no Vlan entry.
-	sw.port++
-	noArpOutput := "password\nenable\npassword\nterminal length 0\n% IP ARP table is empty\nexit\n"
-	mockTelnetSingleWithResponse(t, sw.port, noArpOutput, &command)
-	station, err = sw.GetStationForTeamId(254)
-	assert.Nil(t, err)
-	assert.Equal(t, "", station)
-
-	// Returns "" when VLAN is not in the known map.
-	sw.port++
-	unknownVlanOutput := "password\nenable\npassword\nterminal length 0\nInternet  10.2.54.5  2  0050.b6ff.ee5  ARPA  Vlan99\nexit\n"
-	mockTelnetSingleWithResponse(t, sw.port, unknownVlanOutput, &command)
-	station, err = sw.GetStationForTeamId(254)
-	assert.Nil(t, err)
-	assert.Equal(t, "", station)
-
-	// Returns "" when switch address is empty.
-	emptySw := NewSwitch(SwitchConfig{Address: "", Password: "password"})
-	station, err = emptySw.GetStationForTeamId(254)
-	assert.Nil(t, err)
-	assert.Equal(t, "", station)
 }
 
 func newIncrementalTestSwitch(port int) *Switch {
@@ -169,50 +119,48 @@ func newIncrementalTestSwitch(port int) *Switch {
 func TestConfigureSwitchOnlyTouchesChangedStations(t *testing.T) {
 	sw := newIncrementalTestSwitch(9100)
 
-	// First call reconciles in full: the switch's state is unknown at startup, so every
-	// station's port is cycled and every VLAN rebuilt.
-	commands := mockTelnetMulti(t, sw.port, 6) // baseline and its save precede the first configuration
+	// First call reconciles in full: the switch's state is unknown at startup, so every VLAN
+	// is rebuilt. Baseline, its save, the removal, then the one add.
+	commands := mockTelnetMulti(t, sw.port, 4)
 	assert.Nil(t, sw.ConfigureTeamEthernet([6]*model.Team{{Id: 841}, nil, nil, nil, nil, nil}))
 	assert.Equal(t, "ACTIVE", sw.Status)
 	assert.Contains(t, commands.at(0), "ip routing\n")
-	assert.Contains(t, commands.at(2), "interface GigabitEthernet0/1\nshutdown\n")
-	assert.Contains(t, commands.at(2), "interface GigabitEthernet0/6\nshutdown\n")
-	assert.Contains(t, commands.at(3), "interface Vlan60\nno ip address")
+	assert.Contains(t, commands.at(2), "interface Vlan60\nno ip address")
+	assert.Contains(t, commands.at(3), "interface Vlan10\nip address 10.8.41.4 255.255.255.0\n")
 
-	// Second call adds B1 only.
+	// Second call adds B1 only: one removal and one add, naming nothing but Vlan40.
 	sw.port++
-	commands = mockTelnetMulti(t, sw.port, 4)
+	commands = mockTelnetMulti(t, sw.port, 2)
 	assert.Nil(t, sw.ConfigureTeamEthernet([6]*model.Team{{Id: 841}, nil, nil, {Id: 254}, nil, nil}))
+	assert.Contains(t, commands.at(0), "interface Vlan40\nno ip address\nno ip dhcp pool dhcp40\n")
+	assert.NotContains(t, commands.at(0), "Vlan10")
+	assert.Contains(t, commands.at(1), "interface Vlan40\nip address 10.2.54.4 255.255.255.0\n")
+	assert.NotContains(t, commands.at(1), "10.8.41")
 
-	// Only B1's port is cycled, and only its VLAN rebuilt.
-	assert.Contains(t, commands.at(0), "interface GigabitEthernet0/4\nshutdown\n")
-	assert.NotContains(t, commands.at(0), "GigabitEthernet0/1")
-	assert.NotContains(t, commands.at(0), "range")
-	assert.Contains(t, commands.at(1), "interface Vlan40\nno ip address\nno ip dhcp pool dhcp40\n")
-	assert.NotContains(t, commands.at(1), "Vlan10")
-	assert.Contains(t, commands.at(2), "interface Vlan40\nip address 10.2.54.4 255.255.255.0\n")
-	assert.NotContains(t, commands.at(2), "10.8.41")
-	assert.Contains(t, commands.at(3), "interface GigabitEthernet0/4\nno shutdown\n")
-	assert.NotContains(t, commands.at(3), "GigabitEthernet0/1")
+	// Nothing shuts a driver station port any more. That cycling was what made a laptop
+	// re-request an address on its new subnet, and it cost seconds on every match load.
+	for i := 0; i < 2; i++ {
+		assert.NotContains(t, commands.at(i), "shutdown")
+		assert.NotContains(t, commands.at(i), "GigabitEthernet")
+	}
 }
 
-// Clearing a station removes its VLAN and cycles its port, and nothing else.
+// Clearing a station removes its VLAN and nothing else. Upstream leaves an empty station
+// with no subnet; the staging subnet that used to replace it existed only so an unregistered
+// laptop could announce itself, which is the auto-registration this fork no longer does.
 func TestConfigureSwitchClearsOneStation(t *testing.T) {
 	sw := newIncrementalTestSwitch(9110)
-	mockTelnetMulti(t, sw.port, 6) // baseline and its save precede the first configuration
+	mockTelnetMulti(t, sw.port, 4) // baseline and its save precede the first configuration
 	assert.Nil(t, sw.ConfigureTeamEthernet([6]*model.Team{{Id: 841}, nil, nil, {Id: 254}, nil, nil}))
 
-	// Clearing B1 replaces its team subnet with a staging one rather than leaving the
-	// station dead, so there is still a third command to add.
+	// Only the removal is left: with B1 empty there is nothing to add, so the add command
+	// is never sent at all.
 	sw.port++
-	commands := mockTelnetMulti(t, sw.port, 6) // baseline and its save precede the first configuration
+	commands := mockTelnetMulti(t, sw.port, 1)
 	assert.Nil(t, sw.ConfigureTeamEthernet([6]*model.Team{{Id: 841}, nil, nil, nil, nil, nil}))
-	assert.Contains(t, commands.at(0), "interface GigabitEthernet0/4\nshutdown\n")
-	assert.Contains(t, commands.at(1), "interface Vlan40\nno ip address\nno ip dhcp pool dhcp40\n")
-	assert.NotContains(t, commands.at(1), "Vlan10")
-	assert.Contains(t, commands.at(2), "ip dhcp pool staging40\nnetwork 172.16.40.0 255.255.255.0\n")
-	assert.NotContains(t, commands.at(2), "10.8.41")
-	assert.Contains(t, commands.at(3), "interface GigabitEthernet0/4\nno shutdown\n")
+	assert.Contains(t, commands.at(0), "interface Vlan40\nno ip address\nno ip dhcp pool dhcp40\n")
+	assert.NotContains(t, commands.at(0), "Vlan10")
+	assert.NotContains(t, commands.at(0), "staging")
 }
 
 // Bioarena applies the switch's standing configuration itself, so that setting up a field
@@ -297,33 +245,6 @@ func TestConfigureSwitchAppliesBaseline(t *testing.T) {
 	assert.NotContains(t, commands.at(1), "write memory")
 }
 
-// A staging address names the port it came from: the VLAN is its third octet, so the
-// station a driver station is plugged into follows from the address alone.
-func TestStagingStationForAddress(t *testing.T) {
-	for _, testCase := range []struct {
-		address string
-		station int
-		staging bool
-	}{
-		{"172.16.10.25", 0, true},
-		{"172.16.40.199", 3, true},
-		{"172.16.60.20", 5, true},
-		{"172.16.99.20", 0, false}, // not a station VLAN
-		{"10.8.41.5", 0, false},    // a team subnet
-		{"10.0.100.5", 0, false},   // the FMS itself
-		{"172.16.10", 0, false},
-		{"", 0, false},
-	} {
-		station, staging := StagingStationForAddress(testCase.address)
-		assert.Equal(t, testCase.staging, staging, testCase.address)
-		if testCase.staging {
-			assert.Equal(t, testCase.station, station, testCase.address)
-		}
-	}
-}
-
-// An unchanged team list touches the switch not at all -- no Telnet session, so nothing to
-// mock. Anything else would cycle ports for no reason.
 func TestConfigureSwitchSkipsUnchangedTeams(t *testing.T) {
 	sw := newIncrementalTestSwitch(9120)
 	mockTelnetMulti(t, sw.port, 6) // baseline and its save precede the first configuration
@@ -398,14 +319,6 @@ func TestDescribeStations(t *testing.T) {
 }
 
 // The port map is fixed by the reference field wiring: station N on GigabitEthernet0/N.
-func TestSwitchPortCommands(t *testing.T) {
-	assert.Equal(
-		t,
-		"interface GigabitEthernet0/1\nshutdown\ninterface GigabitEthernet0/4\nshutdown\n",
-		portCommands([6]bool{true, false, false, true, false, false}, "shutdown"),
-	)
-	assert.Equal(t, "", portCommands([6]bool{}, "shutdown"))
-}
 
 // commandLog collects the commands received across several Telnet sessions.
 type commandLog struct {
@@ -518,11 +431,10 @@ func TestConfigureSwitchDnsServer(t *testing.T) {
 	sw.configBackoffDuration = time.Millisecond
 	sw.configPauseDuration = time.Millisecond
 
-	// Six sessions: the baseline and its save, then ports down, VLANs removed, VLANs
-	// added, ports up.
-	commands := mockTelnetMulti(t, sw.port, 6)
+	// Four sessions: the baseline and its save, then the VLANs removed and added.
+	commands := mockTelnetMulti(t, sw.port, 4)
 	assert.Nil(t, sw.ConfigureTeamEthernet([6]*model.Team{{Id: 841}, nil, nil, nil, nil, nil}))
-	assert.Contains(t, commands.at(4), "default-router 10.8.41.4\ndns-server 10.0.100.5\nlease 7\n")
+	assert.Contains(t, commands.at(3), "default-router 10.8.41.4\ndns-server 10.0.100.5\nlease 7\n")
 
 	// Blank: no dns-server line at all, and the surrounding pool is unchanged.
 	swNoDns := NewSwitch(SwitchConfig{Address: "127.0.0.1", Password: "password"})
@@ -530,8 +442,8 @@ func TestConfigureSwitchDnsServer(t *testing.T) {
 	swNoDns.configBackoffDuration = time.Millisecond
 	swNoDns.configPauseDuration = time.Millisecond
 
-	commands = mockTelnetMulti(t, swNoDns.port, 6)
+	commands = mockTelnetMulti(t, swNoDns.port, 4)
 	assert.Nil(t, swNoDns.ConfigureTeamEthernet([6]*model.Team{{Id: 841}, nil, nil, nil, nil, nil}))
-	assert.NotContains(t, commands.at(4), "dns-server")
-	assert.Contains(t, commands.at(4), "default-router 10.8.41.4\nlease 7\n")
+	assert.NotContains(t, commands.at(3), "dns-server")
+	assert.Contains(t, commands.at(3), "default-router 10.8.41.4\nlease 7\n")
 }

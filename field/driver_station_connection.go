@@ -395,36 +395,21 @@ func (arena *Arena) listenForDriverStations() {
 			continue
 		}
 
-		// A connection from a staging subnet names the port it arrived on, so the team can
-		// be registered to exactly the station it is plugged into. That registration
-		// rebuilds the station onto the team's own subnet and cycles its port, so this
-		// connection is about to die either way -- close it and let the driver station
-		// reconnect with its real address rather than tracking one that cannot survive.
-		remoteAddress, _, _ := net.SplitHostPort(tcpConn.RemoteAddr().String())
-		if stationIndex, staging := network.StagingStationForAddress(remoteAddress); staging {
-			arena.registerStagingTeam(teamId, stationIndex)
+		// Check to see if the team is supposed to be on the field, and notify the DS accordingly.
+		//
+		// A team that is not registered is turned away, as upstream does. Bioarena used to
+		// register it instead -- guessing the station from a staging subnet or the switch's
+		// ARP table -- which cost a switch round trip and a port cycle on every arrival and
+		// was wrong often enough to be slower than typing the number in.
+		assignedStation := arena.getAssignedAllianceStation(teamId)
+		if assignedStation == "" {
+			log.Printf("Rejecting connection from Team %d, who is not in the current match, soon.", teamId)
 			go func() {
+				// Wait a second and then close it so it doesn't chew up bandwidth constantly trying to reconnect.
 				time.Sleep(time.Second)
 				tcpConn.Close()
 			}()
 			continue
-		}
-
-		// Check to see if the team is supposed to be on the field, and notify the DS accordingly.
-		assignedStation := arena.getAssignedAllianceStation(teamId)
-		if assignedStation == "" {
-			if arena.EventSettings.AutoConfigureTeams {
-				assignedStation = arena.autoAssignTeam(teamId)
-			}
-			if assignedStation == "" {
-				log.Printf("Rejecting connection from Team %d, who is not in the current match, soon.", teamId)
-				go func() {
-					// Wait a second and then close it so it doesn't chew up bandwidth constantly trying to reconnect.
-					time.Sleep(time.Second)
-					tcpConn.Close()
-				}()
-				continue
-			}
 		}
 
 		// Read the team number from the IP address to check for a station mismatch.

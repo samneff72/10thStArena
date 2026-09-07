@@ -196,8 +196,8 @@ Confirm what is installed with `systemctl cat bioarena`. Before starting the bin
 
 - assigns `10.0.100.5/24` to `eth0` — the address driver stations are hardcoded to look for
 - assigns `192.168.69.5/24` as well, so the access point stays reachable on its backup address
-- routes `10.0.0.0/8` and `172.16.0.0/12` via the switch, so replies to driver stations on
-  team and staging subnets have a way back
+- routes `10.0.0.0/8` via the switch, so replies to driver stations on team subnets have a
+  way back
 
 Each is prefixed `-` in the unit, so a restart with the addresses already present carries
 on rather than failing.
@@ -346,31 +346,26 @@ is what makes free practice usable while other teams are driving.
 The first configuration after a restart rebuilds everything, because the switch outlives
 the process and may have been changed by hand in between.
 
-#### Staging networks and self-registration
+#### Registering teams
 
-An unregistered station is not left dead. It gets a **staging subnet** — `172.16.<vlan>.0/24`,
-routed to the FMS — so a laptop plugged into it still receives an address and its driver
-station still connects. The driver station announces the team number configured in its own
-software, and the address it connects from names the port it is in, so bioarena registers
-that team to that station and rebuilds it onto the team's real subnet.
+Type the team numbers into Match Play and press **Register**. That is the whole mechanism,
+and it matches upstream.
 
-In practice: plug a driver station into any station's port and it registers itself there.
-Move the cable to another port and the team moves with it, cleared from the station it
-left, so a team is never registered in two places.
+Bioarena used to register teams by itself: an unregistered station was given a staging
+subnet so a laptop plugged into it received an address anyway, its driver station announced
+its team number, and the address it connected from named the port. Plausible, and it worked
+often enough to be tempting -- but every arrival cost a switch round trip and a port cycle,
+and a wrong guess cost more time to undo than typing six numbers ever did. It is gone, along
+with the staging subnets and the ARP-table station lookup behind it.
 
-This is the only identification that survives driver stations being shared between teams.
-It comes from the team number set in the driver station software, not from anything about
-the laptop — a MAC address would name the hardware, which on a shared field says nothing
-about who is driving.
+What survives is what tells you the truth without configuring anything:
 
-`172.16/12` rather than somewhere in `10/8` because team subnets are derived from team
-numbers, and a team numbered under 100 lands on `10.0.NN.0/24` — team 33 would collide with
-a staging subnet keyed the obvious way. The driver station does not care what its own
-address is, only that it can reach `10.0.100.5`.
+- **A cable with no team registered** shows on the station card, from the switch's own
+  `show interfaces status`. Polled on the periodic task, not on the match-load path.
+- **A laptop in the wrong station** is caught by upstream's own check: it receives the
+  registered team's subnet but announces its own team number, and the mismatch is reported.
 
-Turn it off with **Auto-Configure Teams** under Arena → Settings, which leaves the staging
-subnets in place but stops bioarena acting on what connects to them. Registration is also
-skipped once a match is running.
+An unregistered station gets no subnet at all now, as upstream leaves it.
 
 **Check the license level** with `show version`. Bioarena needs six concurrent SVIs with
 addresses and the IOS DHCP server. IP Base has both; verify before wiring a field on
@@ -573,7 +568,6 @@ The Pi must be able to reach:
 | Field AP backup, `192.168.69.1` | HTTP | 80 | Second address on `eth0`, same VLAN |
 | Switch, `10.0.100.3` | Telnet | 23 | Same subnet as the FMS address |
 | Team subnets, `10.TE.AM.0/24` | TCP 1750, UDP 1160 | | Routed via the switch |
-| Staging subnets, `172.16.<vlan>.0/24` | TCP 1750 | | Routed via the switch |
 
 The last two are the ones that catch people. The switch routes a driver station's packets
 to the Pi without any help, so it looks like the path works — but the Pi's replies need a
@@ -585,7 +579,6 @@ driver station's fault.
 
 ```
 ExecStartPre=-/sbin/ip route add 10.0.0.0/8 via 10.0.100.3 dev eth0
-ExecStartPre=-/sbin/ip route add 172.16.0.0/12 via 10.0.100.3 dev eth0
 ```
 
 Test from the Pi:
@@ -593,7 +586,7 @@ Test from the Pi:
 ```bash
 ping 10.0.100.2                   # the access point
 curl -s http://10.0.100.2/status
-ip route get 172.16.20.20         # a staging address: should route via 10.0.100.3
+ip route get 10.8.41.20           # a team address: should route via 10.0.100.3
 ```
 
 `Network is unreachable` from that last one means the routes are missing, and every driver
